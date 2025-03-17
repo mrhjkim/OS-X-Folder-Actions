@@ -1,0 +1,26 @@
+Rules:
+- Title: "주간보고로 이동"
+  Criteria:
+    - AllCriteria:
+      - FileExtension: "xlsx"
+      - FileNameContains: "주간업무"
+  Actions:
+    - MoveToFolder: "주간보고"
+- Title: "월간보고로 이동"
+  Criteria:
+    - AllCriteria:
+      - FileExtension: "xlsx"
+      - FileNameContains: "월간업무"
+  Actions:
+    - MoveToFolder: "월간보고"
+- Title: "기타 보고서로 이동"
+  Criteria:
+    - AnyCriteria:
+      - AllCriteria:
+        - FileNameContains: "aaa"
+        - FileNameContains: "bbb"
+      - AllCriteria:
+        - FileNameContains: "ccc"
+        - FileNameContains: "ddd"
+  Actions:
+    - MoveToFolder: "기타"

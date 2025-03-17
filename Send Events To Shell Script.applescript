@@ -42,12 +42,10 @@ end closing folder window for
 on adding folder items to this_folder after receiving added_items
 	try
 		set item_list to ""
-		tell application "Finder"
-			repeat with an_item in added_items
-				set item_name to name of an_item
-				set item_list to item_list & "'" & item_name & "' "
-			end repeat
-		end tell
+		repeat with an_item in added_items
+			set item_name to POSIX path of an_item
+			set item_list to item_list & "'" & item_name & "' "
+		end repeat
 		send_event("adding", this_folder, item_list)
 	on error errmsg
 		display dialog errmsg
@@ -57,12 +55,10 @@ end adding folder items to
 on removing folder items from this_folder after losing these_items
 	try
 		set item_list to ""
-		tell application "Finder"
-			repeat with an_item in these_items
-				set item_name to name of an_item
-				set item_list to item_list & "'" & item_name & "' "
-			end repeat
-		end tell
+		repeat with an_item in these_items
+			set item_name to POSIX path of an_item
+			set item_list to item_list & "'" & item_name & "' "
+		end repeat
 		send_event("removing", this_folder, item_list)
 	on error errmsg
 		display dialog errmsg
