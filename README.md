@@ -27,9 +27,16 @@ Here’s an example. Let’s say that we want to copy every file placed in ~/Dow
    1. Clone this repo.
    2. Copy **Send Events To Shell Script.scpt** to **~/Library/Scripts/Folder Action Scripts**. 
    2. Copy **FolderActionsDispatcher.sh** and **FolderActionsDispatcher.py** to **/usr/local/bin**.
+<<<<<<< HEAD
    3. Make it executable, like so: _$ chmod a+x /usr/local/bin/FolderActionsDispatcher.sh_.
    4. Copy **.FolderActions.py** to **/usr/local/bin**
    5. Make **.FolderActions.yaml** in target directory
+=======
+   3. Make it world executable, like so: _$ chmod a+x /usr/local/bin/FolderActionsDispatcher.sh_.
+   4. Create python virtual env using python3 -m venv ~/.venvs/systools
+   5. Copy **.FolderActions.py** to **/usr/local/bin**
+   6. Make **.FolderActions.yaml** in target directory
+>>>>>>> f1d9b29 (add setup for python virtual env)
 
 1. Create the file ~/Downloads/.FolderActions.yaml. The file .FolderActions.yaml is a good starting point.
 
