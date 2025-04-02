@@ -33,7 +33,7 @@ def folder_closed(folder):
 
 def item_added_to_folder(folder, item):
     log(f"Item {item} added to folder {folder}")
-    move_file_by_yaml_config(folder, item)
+    apply_rule_by_yaml_config(folder, item)
 
 def item_removed_from_folder(folder, item):
     log(f"Item {item} removed from folder {folder}")
@@ -80,7 +80,7 @@ def move_file_by_config(folder, item):
     log(f"No matching rule for {item} in {folder}")
     return False
 
-def move_file_by_yaml_config(folder, item):
+def apply_rule_by_yaml_config(folder, item):
     item_path = os.path.join(folder, item)
     config_path = os.path.join(folder, ".FolderActions.yaml")
     
@@ -124,8 +124,22 @@ def move_file_by_yaml_config(folder, item):
                     target_path = os.path.join(target_folder, item)
                     shutil.move(item_path, target_path)
                     log(f"Moved {item_path} to {target_path}")
-                    return True
-    
+                elif "RunShellScript" in action:
+                    script_or_command = action["RunShellScript"]
+                    
+                    # 명령어 실행
+                    try:
+                        env = os.environ.copy()
+                        env["FILENAME"] = item_path  # 환경변수에 파일 경로 추가
+                        result = subprocess.run(script_or_command, shell=True, check=True, capture_output=True, env=env, cwd=folder)
+                        if result.returncode == 0:
+                            log(f"Successfully executed shell command: {script_or_command} with FILENAME={item_path}")
+                        else:
+                            log(f"Shell command {script_or_command} exited with return code {result.returncode}")
+                    except subprocess.CalledProcessError as e:
+                        log(f"Error executing shell command: {script_or_command}: {e}\nstdout: {e.stdout.decode()}\nstderr: {e.stderr.decode()}")
+                        continue
+            return True
     log(f"No matching rule for {item} in {folder}")
     return False
 

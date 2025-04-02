@@ -24,3 +24,10 @@ Rules:
         - FileNameContains: "ddd"
   Actions:
     - MoveToFolder: "기타"
+- Title: "파일이름 윈도우 형식으로 변경"
+  Criteria:
+    - AllCriteria:
+      - FileExtension: "xlsx"
+      - FileNameContains: "주간업무"
+  Actions:
+      - RunShellScript: "/opt/homebrew/bin/convmv -f utf-8 -t utf-8 --nfc --notest ${FILENAME}"
