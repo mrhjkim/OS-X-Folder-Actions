@@ -29,6 +29,7 @@ Here’s an example. Let’s say that we want to copy every file placed in ~/Dow
    2. Copy **FolderActionsDispatcher.sh** and **FolderActionsDispatcher.py** to **/usr/local/bin**.
    3. Make it world executable, like so: _$ chmod a+x /usr/local/bin/FolderActionsDispatcher.sh_.
    4. Create python virtual env using python3 -m venv ~/.venvs/systools
+   4.1 pip install pyyaml
    5. Copy **.FolderActions.py** to **/usr/local/bin**
    6. Make **.FolderActions.yaml** in target directory
 
