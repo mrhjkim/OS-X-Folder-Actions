@@ -26,15 +26,15 @@ Here’s an example. Let’s say that we want to copy every file placed in ~/Dow
  
    1. Clone this repo.
    2. Copy **Send Events To Shell Script.scpt** to **~/Library/Scripts/Folder Action Scripts**. 
-   2. Copy **FolderActionsDispatcher.sh** and **FolderActionsDispatcher.py** to **/usr/local/bin**.
-   3. Make it world executable, like so: _$ chmod a+x /usr/local/bin/FolderActionsDispatcher.sh_.
-   4. Create python virtual env using python3 -m venv ~/.venvs/systools
-   4.1 pip install pyyaml
-   5. Copy **.FolderActions.py** to **/usr/local/bin**
-   6. Make **.FolderActions.yaml** in target directory
+   3. Copy **FolderActionsDispatcher.sh** and **FolderActionsDispatcher.py** to **/usr/local/bin**.
+   4. Make it executable, like so: _$ chmod a+x /usr/local/bin/FolderActionsDispatcher.sh_.
+   5. Create python virtual env using python3 -m venv ~/.venvs/systools.
+   6. pip install pyyaml
+   7. Copy **.FolderActions.py** to **/usr/local/bin**
+   8. Make **.FolderActions.yaml** in target directory
 
-1. Create the file ~/Downloads/.FolderActions.yaml. The file .FolderActions.yaml is a good starting point.
+2. Create the file ~/Downloads/.FolderActions.yaml. The file .FolderActions.yaml is a good starting point.
 
-1. Enable Folder Actions for ~/Downloads. In the Finder application, select the ~/Downloads folder, bring up the context menu, and select ‘Folder Actions Setup…‘ From the dialog, select the ‘Send Events To Shell Script.scpt‘ action, and click the ‘Attach‘ button.
+3. Enable Folder Actions for ~/Downloads. In the Finder application, select the ~/Downloads folder, bring up the context menu, and select ‘Folder Actions Setup…‘ From the dialog, select the ‘Send Events To Shell Script.scpt‘ action, and click the ‘Attach‘ button.
 
 That’s it :-) To test it, place a file in ~/Downloads and see that it gets copied to some directory by rules.

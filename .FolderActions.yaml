@@ -5,14 +5,14 @@ Rules:
       - FileExtension: "xlsx"
       - FileNameContains: "주간업무"
   Actions:
-    - MoveToFolder: "주간보고"
+    - MoveToFolder: "~/Documents/주간보고"
 - Title: "월간보고로 이동"
   Criteria:
     - AllCriteria:
       - FileExtension: "xlsx"
       - FileNameContains: "월간업무"
   Actions:
-    - MoveToFolder: "월간보고"
+    - MoveToFolder: "~/Documents/월간보고"
 - Title: "기타 보고서로 이동"
   Criteria:
     - AnyCriteria:
@@ -23,7 +23,7 @@ Rules:
         - FileNameContains: "ccc"
         - FileNameContains: "ddd"
   Actions:
-    - MoveToFolder: "기타"
+    - MoveToFolder: "~/Documents/기타"
 - Title: "파일이름 윈도우 형식으로 변경"
   Criteria:
     - AllCriteria:
