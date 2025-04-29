@@ -28,6 +28,24 @@ def load_callback_module(callback_file):
     spec.loader.exec_module(module)
     return module
 
+def get_last_part(path):
+    # 경로를 정규화 (마지막 슬래시 제거)
+    path = os.path.normpath(path)
+    
+    # 경로의 마지막 부분 가져오기 (파일명 또는 마지막 디렉토리)
+    last_part = os.path.basename(path)
+    
+    # 마지막 부분이 비어있다면 (예: "/" 경로)
+    if not last_part:
+        # 경로가 루트라면
+        if os.path.dirname(path) == path:
+            return os.path.sep  # 루트 디렉토리 구분자 반환
+        else:
+            # 상위 디렉토리의 마지막 부분 가져오기
+            return os.path.basename(os.path.dirname(path))
+    
+    return last_part
+
 def main():
     if len(sys.argv) < 3:
         logging.error("Usage: python script.py <event> <target_folder> [items...]")
@@ -61,13 +79,13 @@ def main():
         for item in sys.argv[3:]:
             logging.info(f"Calling {target_callback_file}: item_added_to_folder(folder: {target_folder}, item: {item})")
             if hasattr(callbacks, "item_added_to_folder"):
-                callbacks.item_added_to_folder(target_folder, os.path.basename(item))
+                callbacks.item_added_to_folder(target_folder, get_last_part(item))
     
     elif event == "removing":
         for item in sys.argv[3:]:
             logging.info(f"Calling {target_callback_file}: item_removed_from_folder(folder: {target_folder}, item: {item})")
             if hasattr(callbacks, "item_removed_from_folder"):
-                callbacks.item_removed_from_folder(target_folder, os.path.basename(item))
+                callbacks.item_removed_from_folder(target_folder, get_last_part(item))
     
     else:
         logging.warning("Got unknown event, ignoring")

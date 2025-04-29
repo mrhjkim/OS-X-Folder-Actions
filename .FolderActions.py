@@ -85,7 +85,7 @@ def apply_rule_by_yaml_config(folder, item):
     config_path = os.path.join(folder, ".FolderActions.yaml")
     
     # 파일이 존재하는지 확인
-    if not os.path.isfile(item_path):
+    if not os.path.isfile(item_path) and not os.path.isdir(item_path):
         log(f"File not found: {item_path}")
         return False
     
