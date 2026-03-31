@@ -65,7 +65,8 @@ def _build_prompt(snippet: str, rules: list) -> str:
         f'Content: "{snippet}"\n\n'
         f"Rules:\n{rules_block}\n\n"
         'Respond ONLY as JSON:\n'
-        '{"matched_rule": "<title or null>", "confidence": 0.0, "reason": "<one sentence>"}'
+        '{"matched_rule": null, "confidence": 0.0, "reason": "<one sentence>"}\n'
+        'Use null (not the string "null") when no rule fits.'
     )
 
 

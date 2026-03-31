@@ -48,7 +48,8 @@ class AuditLogger:
         Append entry with status='intent'. Returns entry_id for later update().
         Used by Stage 2 before executing the file action.
         """
-        entry_id = f"{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+        now = datetime.now(timezone.utc)
+        entry_id = f"{now.strftime('%Y%m%d-%H%M%S')}-{now.microsecond:06d}-{os.getpid()}"
         intent_entry = dict(entry)
         intent_entry["id"] = entry_id
         intent_entry["status"] = "intent"

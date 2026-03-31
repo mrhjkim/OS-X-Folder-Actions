@@ -234,7 +234,7 @@ def _load_yaml_config(config_path: str):
                     if "RunShellScript" in action:
                         logging.error(
                             f"AiRules.Rules['{rule.get('Title')}'].Actions contains RunShellScript — "
-                            "only MoveToFolder is allowed under AiRules in v1. Skipping this rule."
+                            "only MoveToFolder is allowed under AiRules in v1. RunShellScript will be ignored."
                         )
 
     return config
