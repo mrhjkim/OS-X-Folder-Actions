@@ -22,7 +22,14 @@ def load_callback_module(callback_file):
     """Dynamically load the callback module from the target folder."""
     if not os.path.exists(callback_file):
         return None
-    
+
+    # Inject the script's directory into sys.path so sibling modules
+    # (AuditLogger, ContentExtractor, AIProvider) can be imported.
+    import sys
+    script_dir = os.path.dirname(os.path.abspath(callback_file))
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+
     spec = importlib.util.spec_from_file_location("callbacks", callback_file)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
