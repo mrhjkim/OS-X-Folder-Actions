@@ -85,7 +85,7 @@ def item_added_to_folder(folder, item):
     config = _load_yaml_config(config_path)
 
     audit_cfg = config.get("Audit", {}) if config else {}
-    audit_enabled = audit_cfg.get("Enabled", False) if audit_cfg else False
+    audit_enabled = audit_cfg.get("Enabled", True) if audit_cfg is not None else True
     audit_log_dir = audit_cfg.get("Path") if audit_cfg else None
 
     audit = None

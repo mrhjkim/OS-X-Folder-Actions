@@ -50,7 +50,12 @@ echo "Installing folder-actions CLI..."
 cat > "$BIN/folder-actions" <<EOF
 #!/bin/bash
 source "$VENV/bin/activate"
-python "$BIN/FolderActionsLog.py" "\$@"
+# Strip optional 'log' subcommand: 'folder-actions log --watch' == 'folder-actions --watch'
+args=("\$@")
+if [ "\${args[0]:-}" = "log" ]; then
+  args=("\${args[@]:1}")
+fi
+python "$BIN/FolderActionsLog.py" "\${args[@]}"
 EOF
 chmod +x "$BIN/folder-actions"
 
