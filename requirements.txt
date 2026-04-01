@@ -1,0 +1,5 @@
+pyyaml
+pypdf
+python-docx
+openpyxl
+requests

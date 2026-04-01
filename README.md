@@ -16,7 +16,7 @@ There are three parts in this solution:
 
 1. A python script .FolderActions.py to handle rules of .FolderActions.yaml in the target directory
 
-When you attach the Send Events To Shell Script.scpt script to a folder, it will act as an observer and forward the Opening, Closing, Adding and Removing events to the script /usr/local/bin/FolderActionsDispatcher.sh/FolderActionsDispatcher.py. The event payload includes the type of the event, the data needed to perform its purpose (i.e., for the Adding event, the list of the added items), as well as the name of the folder that was the target of the event. FolderActionsDispatcher.py will parse the event, and then will try to invoke a callback script named .FolderActions.py. All you have to do is write the .FolderActions.yaml config file and place it in the folder it belongs to.
+When you attach the Send Events To Shell Script.scpt script to a folder, it will act as an observer and forward the Opening, Closing, Adding and Removing events to the script ~/.local/bin/FolderActionsDispatcher.sh/FolderActionsDispatcher.py. The event payload includes the type of the event, the data needed to perform its purpose (i.e., for the Adding event, the list of the added items), as well as the name of the folder that was the target of the event. FolderActionsDispatcher.py will parse the event, and then will try to invoke a callback script named .FolderActions.py. All you have to do is write the .FolderActions.yaml config file and place it in the folder it belongs to.
 
 ## Installation
 
@@ -26,11 +26,8 @@ Here’s an example. Let’s say that we want to copy every file placed in ~/Dow
  
    1. Clone this repo.
    2. Copy **Send Events To Shell Script.scpt** to **~/Library/Scripts/Folder Action Scripts**. 
-   3. Copy **FolderActionsDispatcher.sh** and **FolderActionsDispatcher.py** to **/usr/local/bin**.
-   4. Make it executable, like so: _$ chmod a+x /usr/local/bin/FolderActionsDispatcher.sh_.
-   5. Create python virtual env using python3 -m venv ~/.venvs/systools.
-   6. pip install pyyaml
-   7. Copy **.FolderActions.py** to **/usr/local/bin**
+   3. Run **./install.sh** — this copies all scripts to **~/.local/bin**, installs dependencies, and sets up the CLI.
+   4. Open a new terminal (or run `source ~/.zshrc`) so `~/.local/bin` is on your PATH.
    8. Make **.FolderActions.yaml** in target directory
 
 2. Create the file ~/Downloads/.FolderActions.yaml. The file .FolderActions.yaml is a good starting point.
