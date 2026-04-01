@@ -2,11 +2,11 @@ import json
 import logging
 import os
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-TIMEOUT_SECONDS = 10
+OLLAMA_URL = "http://localhost:11434/api/chat"
+DEFAULT_TIMEOUT_SECONDS = 60
 
 
-def query(snippet: str, rules: list, model: str) -> dict:
+def query(snippet: str, rules: list, model: str, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> dict:
     """
     Classify a file against a list of AI rules using Ollama.
 
@@ -32,8 +32,13 @@ def query(snippet: str, rules: list, model: str) -> dict:
     try:
         resp = requests.post(
             OLLAMA_URL,
-            json={"model": model, "prompt": prompt, "stream": False, "format": "json"},
-            timeout=TIMEOUT_SECONDS,
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "format": "json",
+            },
+            timeout=timeout,
         )
         resp.raise_for_status()
     except Exception as e:
@@ -41,8 +46,27 @@ def query(snippet: str, rules: list, model: str) -> dict:
 
     try:
         outer = resp.json()
-        raw_response = outer.get("response", "")
-        result = json.loads(raw_response)
+        # /api/chat returns {"message": {"role": "assistant", "content": "..."}}
+        message = outer.get("message", {})
+        raw_response = message.get("content", "") if isinstance(message, dict) else ""
+        if not raw_response:
+            outer_keys = list(outer.keys()) if isinstance(outer, dict) else repr(outer)
+            return _error(
+                f"Ollama chat response is empty — "
+                f"outer keys: {outer_keys}, body: {str(outer)[:400]}"
+            )
+        try:
+            result = json.loads(raw_response)
+        except (json.JSONDecodeError, ValueError):
+            # Model ignored format:"json" and returned prose — extract outermost JSON object
+            start = raw_response.find('{')
+            end = raw_response.rfind('}')
+            if start == -1 or end <= start:
+                return _error(f"Ollama returned prose with no JSON — raw: {raw_response[:300]}")
+            try:
+                result = json.loads(raw_response[start:end + 1])
+            except (json.JSONDecodeError, ValueError) as e2:
+                return _error(f"Ollama JSON extraction failed: {e2} — raw: {raw_response[:300]}")
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         return _error(f"Ollama response parse failed: {e} — raw: {resp.text[:200]}")
 
@@ -60,13 +84,14 @@ def _build_prompt(snippet: str, rules: list) -> str:
         for r in rules
     )
     return (
-        "You are a file classifier. Return the best matching rule name and your confidence.\n"
-        "If no rule fits well, return null for matched_rule.\n\n"
-        f'Content: "{snippet}"\n\n'
+        'OUTPUT ONLY A JSON OBJECT. No prose. No explanation. No markdown. Just JSON.\n\n'
+        "You are a file classifier. Match the file content to the best rule below.\n\n"
+        f'File content:\n"""\n{snippet}\n"""\n\n'
         f"Rules:\n{rules_block}\n\n"
-        'Respond ONLY as JSON:\n'
-        '{"matched_rule": null, "confidence": 0.0, "reason": "<one sentence>"}\n'
-        'Use null (not the string "null") when no rule fits.'
+        'Output exactly this JSON (fill in the values):\n'
+        '{"matched_rule": "<rule title or null>", "confidence": <0.0-1.0>, "reason": "<one sentence>"}\n'
+        'Use JSON null (not the string "null") when no rule fits.\n'
+        'STOP after the closing brace. Output nothing else.'
     )
 
 

@@ -133,10 +133,11 @@ def item_added_to_folder(folder, item):
         ai_rules = ai_cfg.get("Rules", [])
         model = ai_cfg.get("Model")
         threshold = float(ai_cfg.get("ConfidenceThreshold", 0.8))
+        ai_timeout = int(ai_cfg.get("TimeoutSeconds", 60))
 
         if ai_rules and model:
             snippet = ContentExtractor.extract(file_path)
-            result = AIProvider.query(snippet, ai_rules, model)
+            result = AIProvider.query(snippet, ai_rules, model, timeout=ai_timeout)
 
             if not result["error"] and result["matched_rule"] and result["confidence"] >= threshold:
                 dest_dir = result["destination"]
