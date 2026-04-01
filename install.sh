@@ -4,14 +4,22 @@
 set -euo pipefail
 
 VENV="$HOME/.venvs/systools"
-BIN="/usr/local/bin"
-SCRIPTS_DIR="/usr/local/Library/Scripts/Folder Action Scripts"
+BIN="$HOME/.local/bin"
+SCRIPTS_DIR="$HOME/Library/Scripts/Folder Action Scripts"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "Installing OS-X-Folder-Actions..."
 echo "  Repo : $REPO_DIR"
 echo "  Venv : $VENV"
 echo "  Bin  : $BIN"
+
+# 0. Ensure ~/.local/bin exists and is on PATH
+mkdir -p "$BIN"
+if [[ ":$PATH:" != *":$BIN:"* ]]; then
+    echo "Adding $BIN to PATH in ~/.zshrc..."
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
+    echo "  Note: run 'source ~/.zshrc' or open a new terminal after install."
+fi
 
 # 1. Create venv if it doesn't exist
 if [ ! -d "$VENV" ]; then
