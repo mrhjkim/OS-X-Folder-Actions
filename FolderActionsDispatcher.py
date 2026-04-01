@@ -65,7 +65,7 @@ def main():
     # Load the callback module
     callbacks = load_callback_module(target_callback_file)
     if callbacks is None:
-        target_callback_file = os.path.join("/usr/local/bin", CALLBACK_FILE)
+        target_callback_file = os.path.join(os.path.expanduser("~/.local/bin"), CALLBACK_FILE)
         callbacks = load_callback_module(target_callback_file)
         if callbacks is None:
             logging.error("No callback module found, exiting")

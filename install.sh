@@ -40,10 +40,9 @@ cp "$REPO_DIR/ContentExtractor.py"        "$BIN/"
 cp "$REPO_DIR/AIProvider.py"              "$BIN/"
 cp "$REPO_DIR/FolderActionsLog.py"        "$BIN/"
 
-# 4. Install dispatcher shell script (copy FIRST, then substitute $HOME)
+# 4. Install dispatcher shell script
 echo "Installing FolderActionsDispatcher.sh..."
 cp "$REPO_DIR/FolderActionsDispatcher.sh" "$BIN/"
-perl -pi -e "s|/Users/mrhjkim|$HOME|g" "$BIN/FolderActionsDispatcher.sh"
 chmod +x "$BIN/FolderActionsDispatcher.sh"
 
 # 5. Install folder-actions CLI wrapper

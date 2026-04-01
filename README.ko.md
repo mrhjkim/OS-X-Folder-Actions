@@ -16,7 +16,7 @@ Mac OS X에는 폴더 액션(Folder Actions)이라는 멋진 기능이 있습니
 
 3. 대상 디렉토리의 **.FolderActions.yaml** 규칙을 처리하는 Python 스크립트 **.FolderActions.py**
 
-**Send Events To Shell Script.scpt** 스크립트를 폴더에 연결하면, 이 스크립트는 관찰자로 작동하며 Opening, Closing, Adding 및 Removing 이벤트를 **/usr/local/bin/FolderActionsDispatcher.sh/FolderActionsDispatcher.py** 스크립트로 전달합니다. 이벤트 페이로드에는 이벤트 유형, 목적을 수행하는 데 필요한 데이터(예: Adding 이벤트의 경우 추가된 항목 목록), 그리고 이벤트 대상 폴더의 이름이 포함됩니다. **FolderActionsDispatcher.py**는 이벤트를 파싱한 후, **.FolderActions.py**라는 콜백 스크립트를 호출하려고 시도합니다. 여러분은 **.FolderActions.yaml** 구성 파일을 작성하고 해당 폴더에 배치하기만 하면 됩니다.
+**Send Events To Shell Script.scpt** 스크립트를 폴더에 연결하면, 이 스크립트는 관찰자로 작동하며 Opening, Closing, Adding 및 Removing 이벤트를 **~/.local/bin/FolderActionsDispatcher.sh/FolderActionsDispatcher.py** 스크립트로 전달합니다. 이벤트 페이로드에는 이벤트 유형, 목적을 수행하는 데 필요한 데이터(예: Adding 이벤트의 경우 추가된 항목 목록), 그리고 이벤트 대상 폴더의 이름이 포함됩니다. **FolderActionsDispatcher.py**는 이벤트를 파싱한 후, **.FolderActions.py**라는 콜백 스크립트를 호출하려고 시도합니다. 여러분은 **.FolderActions.yaml** 구성 파일을 작성하고 해당 폴더에 배치하기만 하면 됩니다.
 
 ## 설치
 
@@ -26,11 +26,8 @@ Mac OS X에는 폴더 액션(Folder Actions)이라는 멋진 기능이 있습니
  
    1. 이 저장소를 클론합니다.
    2. **Send Events To Shell Script.scpt**를 **~/Library/Scripts/Folder Action Scripts**로 복사합니다.
-   3. **FolderActionsDispatcher.sh**와 **FolderActionsDispatcher.py**를 **/usr/local/bin**으로 복사합니다.
-   4. 다음 명령어로 실행 권한을 부여합니다: _$ chmod a+x /usr/local/bin/FolderActionsDispatcher.sh_.
-   5. Python 가상 환경을 생성합니다: _$ python3 -m venv ~/.venvs/systools_.
-   6. **pyyaml**을 설치합니다: _$ pip install pyyaml_.
-   7. **.FolderActions.py**를 **/usr/local/bin**으로 복사합니다.
+   3. **./install.sh**를 실행합니다 — 모든 스크립트를 **~/.local/bin**에 복사하고, 의존성을 설치하며, CLI를 설정합니다.
+   4. 새 터미널을 열거나 `source ~/.zshrc`를 실행하여 `~/.local/bin`이 PATH에 포함되도록 합니다.
    8. 대상 디렉토리에 **.FolderActions.yaml** 파일을 만듭니다.
 
 2. **~/Downloads/.FolderActions.yaml** 파일을 생성합니다. **.FolderActions.yaml** 파일은 시작점으로 적합합니다.
