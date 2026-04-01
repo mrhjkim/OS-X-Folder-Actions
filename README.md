@@ -8,30 +8,70 @@ Mac OS X has a nice feature called Folder Actions. Basically, this feature lets 
 
 How would you write that script in python? Here’s my simple, general-purpose solution.
 
-There are three parts in this solution:
+There are four main components:
 
-1. An AppleScript called Send Events To Shell Script.scpt (binary file, use the built-in AppleScript Editor to view/edit)
+1. **Send Events To Shell Script.applescript** — attaches to a folder and forwards Folder Action events (open, close, add, remove) to the dispatcher.
 
-1. A script called FolderActionsDispatcher.sh/FolderActionsDispatcher.py
+2. **FolderActionsDispatcher.sh / FolderActionsDispatcher.py** — receives events from AppleScript and dispatches them to the rule engine.
 
-1. A python script .FolderActions.py to handle rules of .FolderActions.yaml in the target directory
+3. **.FolderActions.py** — the 3-stage rule engine:
+   - **Stage 1 (YAML rules):** fast, deterministic matching by filename/extension
+   - **Stage 2 (AI rules):** local LLM via [Ollama](https://ollama.ai) classifies files by content when YAML rules don't match
+   - **Stage 3 (Fallthrough):** explicit no-match log entry
 
-When you attach the Send Events To Shell Script.scpt script to a folder, it will act as an observer and forward the Opening, Closing, Adding and Removing events to the script ~/.local/bin/FolderActionsDispatcher.sh/FolderActionsDispatcher.py. The event payload includes the type of the event, the data needed to perform its purpose (i.e., for the Adding event, the list of the added items), as well as the name of the folder that was the target of the event. FolderActionsDispatcher.py will parse the event, and then will try to invoke a callback script named .FolderActions.py. All you have to do is write the .FolderActions.yaml config file and place it in the folder it belongs to.
+4. **folder-actions log** — CLI to query the JSONL audit log (`--file`, `--rule`, `--since`, `--watch`).
+
+All you have to do is write a `.FolderActions.yaml` config file and place it in the folder you want to watch.
 
 ## Installation
 
 Here’s an example. Let’s say that we want to copy every file placed in ~/Downloads to some directory, and do it automatically. Here’s what we will do:
 
-1. One time setup:
- 
+1. One-time setup:
+
    1. Clone this repo.
-   2. Copy **Send Events To Shell Script.scpt** to **~/Library/Scripts/Folder Action Scripts**. 
-   3. Run **./install.sh** — this copies all scripts to **~/.local/bin**, installs dependencies, and sets up the CLI.
-   4. Open a new terminal (or run `source ~/.zshrc`) so `~/.local/bin` is on your PATH.
-   8. Make **.FolderActions.yaml** in target directory
+   2. Run **`./install.sh`** — creates a virtualenv, installs dependencies, copies scripts to `~/.local/bin`, and sets up the `folder-actions` CLI.
+   3. Open a new terminal (or run `source ~/.zshrc`) so `~/.local/bin` is on your PATH.
+   4. Attach the AppleScript: right-click your target folder in Finder → **Folder Actions Setup…** → select **Send Events To Shell Script.applescript**.
 
-2. Create the file ~/Downloads/.FolderActions.yaml. The file .FolderActions.yaml is a good starting point.
+2. Create `~/Downloads/.FolderActions.yaml`:
 
-3. Enable Folder Actions for ~/Downloads. In the Finder application, select the ~/Downloads folder, bring up the context menu, and select ‘Folder Actions Setup…‘ From the dialog, select the ‘Send Events To Shell Script.scpt‘ action, and click the ‘Attach‘ button.
+```yaml
+Rules:
+  - Title: "PDF documents"
+    Criteria:
+      - FileExtension: pdf
+    Actions:
+      - MoveToFolder: ~/Documents/PDFs/
 
-That’s it :-) To test it, place a file in ~/Downloads and see that it gets copied to some directory by rules.
+  - Title: "Weekly reports"
+    Criteria:
+      - AllCriteria:
+          - FileExtension: xlsx
+          - FileNameContains: "weekly"
+    Actions:
+      - MoveToFolder: ~/Documents/Reports/
+
+# Optional: AI rules (requires Ollama — https://ollama.ai)
+AiRules:
+  Model: llama3.2
+  ConfidenceThreshold: 0.8
+  Rules:
+    - Title: "Tax documents"
+      Description: "Tax receipts, invoices, or financial records"
+      Actions:
+        - MoveToFolder: ~/Documents/Finance/Tax/
+
+# Audit log is on by default (~/.folder-actions-log/)
+# To disable: Audit: {Enabled: false}
+```
+
+3. Drop a file into `~/Downloads` and watch it move.
+
+4. View the audit log:
+
+```bash
+folder-actions log              # last 20 entries
+folder-actions log --watch      # live tail
+folder-actions log --file invoice --since 2026-01-01
+```
