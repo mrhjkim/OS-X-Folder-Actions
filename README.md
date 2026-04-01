@@ -56,6 +56,7 @@ Rules:
 AiRules:
   Model: llama3.2
   ConfidenceThreshold: 0.8
+  TimeoutSeconds: 60      # optional, default 60 — increase for large models
   Rules:
     - Title: "Tax documents"
       Description: "Tax receipts, invoices, or financial records"

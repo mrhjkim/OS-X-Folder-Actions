@@ -56,6 +56,7 @@ Rules:
 AiRules:
   Model: llama3.2
   ConfidenceThreshold: 0.8
+  TimeoutSeconds: 60      # 선택 사항, 기본값 60초 — 대형 모델 사용 시 늘릴 것
   Rules:
     - Title: "세금 문서"
       Description: "세금 영수증, 청구서 또는 재무 기록"
