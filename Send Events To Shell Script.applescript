@@ -18,7 +18,8 @@
 #
 
 to send_event(the_event, a_folder, a_payload)
-	set dispatcher_script to "/usr/local/bin/FolderActionsDispatcher.sh"
+	set home_path to POSIX path of (path to home folder)
+	set dispatcher_script to home_path & ".local/bin/FolderActionsDispatcher.sh"
 	do shell script dispatcher_script & " " & the_event & " " & POSIX path of a_folder & " " & a_payload
 end send_event
 
