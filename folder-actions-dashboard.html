@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folder Actions — 감사 로그 & 규칙 편집기</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f0f;color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px}
+
+/* Header */
+header{background:#1a1a1a;border-bottom:1px solid #2a2a2a;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+h1{font-size:14px;font-weight:600;color:#fff}
+.header-sub{font-size:12px;color:#555}
+.stats{display:flex;gap:6px;margin-left:auto;align-items:center}
+.stat{padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:default}
+.stat-total{background:#2a2a2a;color:#888}
+.stat-matched{background:#1a3a2a;color:#4caf50}
+.stat-unmatched{background:#3a1a1a;color:#f44336}
+.stat-ai{background:#1a2a3a;color:#64b5f6}
+.load-btn{padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;border:1px solid #333;background:transparent;color:#888;transition:all .15s}
+.load-btn:hover{color:#fff;border-color:#555}
+#file-input{display:none}
+
+/* Main layout */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* Log panel */
+.log-panel{width:46%;border-right:1px solid #2a2a2a;display:flex;flex-direction:column;overflow:hidden}
+.panel-header{padding:8px 12px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:8px;flex-shrink:0;background:#141414}
+.panel-title{font-weight:600;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.filter-tabs{display:flex;gap:2px;margin-left:auto}
+.ftab{padding:3px 10px;border-radius:3px;font-size:11px;cursor:pointer;border:none;background:transparent;color:#555;transition:all .15s}
+.ftab.active{background:#2a2a2a;color:#fff}
+.ftab:hover:not(.active){color:#aaa}
+.log-scroll{flex:1;overflow-y:auto}
+table{width:100%;border-collapse:collapse}
+thead{position:sticky;top:0;background:#141414;z-index:1}
+th{padding:5px 8px;text-align:left;font-size:10px;color:#555;font-weight:500;border-bottom:1px solid #222;white-space:nowrap}
+td{padding:6px 8px;border-bottom:1px solid #1a1a1a;font-size:12px;vertical-align:middle}
+.log-row{cursor:pointer;transition:background .1s}
+.log-row:hover{background:#181818}
+.log-row.selected{background:#1a2535!important}
+.badge{display:inline-block;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.badge-yaml{background:#1a3a2a;color:#4caf50}
+.badge-ai{background:#1a2a3a;color:#64b5f6}
+.badge-fallthrough{background:#3a1a1a;color:#ef5350}
+.cell-file{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.cell-ts{color:#555;font-size:10px;white-space:nowrap}
+.cell-rule{color:#777;font-size:11px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell-status{font-size:10px}
+.status-ok{color:#4caf50}
+.status-none{color:#555}
+.status-err{color:#ef5350}
+
+/* Rule panel */
+.rule-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.rule-panel .panel-header{justify-content:space-between}
+.btn-add{padding:4px 12px;border-radius:3px;font-size:11px;cursor:pointer;border:1px solid #2a4a3a;background:#1a3a2a;color:#4caf50;transition:all .15s}
+.btn-add:hover{background:#2a4a3a}
+.selected-hint{padding:7px 12px;background:#1a2535;border-bottom:1px solid #253545;font-size:12px;color:#7ab3d4;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.hint-file{font-weight:600;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hint-clear{margin-left:auto;background:none;border:none;color:#555;cursor:pointer;font-size:14px;padding:0 4px}
+.hint-clear:hover{color:#aaa}
+.rule-scroll{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px}
+
+/* Rule card */
+.rule-card{background:#1a1a1a;border:1px solid #252525;border-radius:6px;overflow:hidden;transition:border-color .15s}
+.rule-card:hover{border-color:#333}
+.rule-card.modified{border-color:#b8860b}
+.rule-card.is-new{border-color:#1565c0}
+.rule-card-head{padding:9px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.rule-card-head:hover{background:#1e1e1e}
+.rc-title{font-weight:500;font-size:13px;flex:1}
+.rc-summary{font-size:10px;color:#555;margin-right:4px}
+.rc-badge{font-size:9px;padding:1px 6px;border-radius:3px;font-weight:600}
+.badge-mod{background:#3a2800;color:#d4a017}
+.badge-new{background:#102040;color:#64b5f6}
+.expand-icon{color:#555;font-size:10px;transition:transform .15s;flex-shrink:0}
+.expand-icon.open{transform:rotate(90deg)}
+
+/* Rule edit form */
+.rule-form{padding:12px;border-top:1px solid #222;background:#141414}
+.form-group{margin-bottom:10px}
+.form-label{display:block;font-size:10px;color:#777;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
+input[type=text],select,.form-input{width:100%;padding:6px 9px;background:#111;border:1px solid #2a2a2a;border-radius:4px;color:#e0e0e0;font-size:12px;font-family:inherit;transition:border-color .15s}
+input[type=text]:focus,select:focus{outline:none;border-color:#444}
+.mode-row{display:flex;gap:4px;margin-bottom:8px}
+.mode-btn{padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;border:1px solid #2a2a2a;background:transparent;color:#555;transition:all .15s}
+.mode-btn.active{background:#102040;border-color:#1565c0;color:#64b5f6}
+.mode-btn:hover:not(.active){color:#aaa}
+.criteria-list{display:flex;flex-direction:column;gap:5px}
+.crit-row{display:flex;gap:6px;align-items:center}
+.crit-row select{width:130px;flex-shrink:0;font-size:11px;padding:5px 8px}
+.crit-row input{flex:1;font-size:11px}
+.btn-rem{background:none;border:none;color:#555;cursor:pointer;padding:3px 6px;font-size:13px;line-height:1;border-radius:3px;flex-shrink:0}
+.btn-rem:hover{background:#3a1a1a;color:#ef5350}
+.btn-sm{padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;border:1px solid #2a2a2a;background:#1a1a1a;color:#888;transition:all .15s;white-space:nowrap}
+.btn-sm:hover{border-color:#444;color:#ddd}
+.groups-wrap{display:flex;flex-direction:column;gap:8px}
+.group-box{background:#111;border:1px solid #222;border-radius:4px;padding:8px}
+.group-hdr{font-size:10px;color:#666;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.form-actions{display:flex;gap:6px;margin-top:10px;align-items:center}
+.btn-save{padding:6px 14px;border-radius:4px;font-size:12px;cursor:pointer;border:none;background:#1a3a2a;color:#4caf50;transition:all .15s}
+.btn-save:hover{background:#2a5a3a}
+.btn-cancel{padding:6px 14px;border-radius:4px;font-size:12px;cursor:pointer;border:1px solid #2a2a2a;background:transparent;color:#888}
+.btn-cancel:hover{color:#ddd;border-color:#444}
+.btn-del{padding:4px 10px;border-radius:4px;font-size:11px;cursor:pointer;border:1px solid #3a1a1a;background:transparent;color:#ef5350;margin-left:auto}
+.btn-del:hover{background:#3a1a1a}
+
+/* Add rule area */
+.add-rule-area{padding:8px;border-top:1px solid #222;flex-shrink:0}
+.new-rule-card{background:#101828;border:1px dashed #1565c0;border-radius:6px;padding:12px}
+.new-rule-title{font-size:12px;font-weight:600;color:#64b5f6;margin-bottom:10px;display:flex;justify-content:space-between}
+
+/* Prompt output */
+.prompt-area{border-top:1px solid #222;padding:10px 16px;flex-shrink:0;background:#0c0c0c;height:160px;display:flex;flex-direction:column;gap:6px}
+.prompt-hdr{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.prompt-hdr-left{display:flex;align-items:center;gap:8px}
+.prompt-text{flex:1;overflow-y:auto;font-size:11px;line-height:1.5;color:#ccc;font-family:'SF Mono','Monaco','Consolas',monospace;white-space:pre-wrap;background:#111;padding:8px 10px;border-radius:4px;border:1px solid #222}
+.btn-copy{padding:3px 10px;border-radius:3px;font-size:11px;cursor:pointer;border:1px solid #2a2a2a;background:transparent;color:#888;transition:all .15s}
+.btn-copy:hover{color:#fff;border-color:#444}
+.btn-copy.copied{color:#4caf50;border-color:#1a3a2a}
+.prompt-tab{padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer;border:none;background:transparent;color:#555;transition:all .15s}
+.prompt-tab.active{background:#1a1a1a;color:#aaa}
+.empty-state{text-align:center;padding:30px;color:#444;font-size:12px}
+#source-select{padding:3px 8px;border-radius:3px;font-size:11px;border:1px solid #2a2a2a;background:#1a1a1a;color:#888;cursor:pointer;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+#source-select:focus{outline:none;border-color:#444}
+.btn-save-file{padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;border:1px solid #2a4a3a;background:#1a3a2a;color:#4caf50;transition:all .15s;white-space:nowrap}
+.btn-save-file:hover{background:#2a5a3a}
+.btn-save-file.saved{color:#4caf50;border-color:#4caf50}
+.btn-save-file:disabled{opacity:0.4;cursor:default}
+
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#3a3a3a}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📁 Folder Actions</h1>
+  <span class="header-sub">감사 로그 & 규칙 편집기</span>
+  <div class="stats">
+    <span class="stat stat-total" id="s-total">전체 0</span>
+    <span class="stat stat-matched" id="s-matched">✓ 매칭 0</span>
+    <span class="stat stat-ai" id="s-ai">AI 0</span>
+    <span class="stat stat-unmatched" id="s-unmatched">✗ 미매칭 0</span>
+  </div>
+  <button class="load-btn" onclick="refreshData()" title="서버에서 최신 데이터 불러오기">↻ 새로고침</button>
+  <button class="load-btn" onclick="document.getElementById('file-input').click()">📂 로그 불러오기</button>
+  <input type="file" id="file-input" accept=".jsonl,.log" multiple onchange="loadLogFiles(event)">
+</header>
+
+<div class="main">
+  <!-- Log panel -->
+  <div class="log-panel">
+    <div class="panel-header">
+      <span class="panel-title">감사 로그</span>
+      <div class="filter-tabs">
+        <button class="ftab active" onclick="setFilter('all',this)">전체</button>
+        <button class="ftab" onclick="setFilter('matched',this)">매칭됨</button>
+        <button class="ftab" onclick="setFilter('unmatched',this)">미매칭</button>
+        <button class="ftab" onclick="setFilter('ai',this)">AI분류</button>
+      </div>
+    </div>
+    <div class="log-scroll">
+      <table>
+        <thead>
+          <tr><th>시간</th><th>파일명</th><th>단계</th><th>규칙</th><th>상태</th></tr>
+        </thead>
+        <tbody id="log-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Rule panel -->
+  <div class="rule-panel">
+    <div class="panel-header">
+      <span class="panel-title">규칙 편집기</span>
+      <select id="source-select" onchange="switchSource(this.value)" style="display:none"></select>
+      <button class="btn-add" onclick="startAddRule()">+ 규칙 추가</button>
+      <button class="btn-save-file" id="save-file-btn" onclick="saveToFile()" title="파일에 저장">💾 저장</button>
+    </div>
+    <div id="selected-hint" style="display:none" class="selected-hint">
+      <span>📄 선택:</span>
+      <span class="hint-file" id="hint-filename"></span>
+      <button class="hint-clear" onclick="clearSelection()" title="선택 해제">✕</button>
+    </div>
+    <div class="rule-scroll" id="rule-scroll">
+      <div id="rule-list"></div>
+    </div>
+    <div class="add-rule-area" id="add-rule-area" style="display:none">
+      <div class="new-rule-card">
+        <div class="new-rule-title">
+          <span>새 규칙</span>
+          <button class="btn-rem" onclick="cancelAddRule()">✕</button>
+        </div>
+        <div id="new-rule-form"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Prompt output -->
+<div class="prompt-area">
+  <div class="prompt-hdr">
+    <div class="prompt-hdr-left">
+      <span>출력</span>
+      <button class="prompt-tab active" id="tab-prompt" onclick="switchPromptTab('prompt')">요약 프롬프트</button>
+      <button class="prompt-tab" id="tab-yaml" onclick="switchPromptTab('yaml')">전체 YAML</button>
+    </div>
+    <button class="btn-copy" id="copy-btn" onclick="copyPrompt()">복사</button>
+  </div>
+  <div class="prompt-text" id="prompt-out"></div>
+</div>
+
+<script>
+// ─── UTILITIES ────────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ─── STATE ──────────────────────────────────────────────────────────────────
+// mode: 'simple'|'and'|'or'|'groups'
+// criteria: [{type:'ext'|'name', value:'...'}]
+// groups: [[{type,value},...], ...]
+let logEntries = [];
+let rules = [];
+let aiRules = null;
+let sources = [];
+let currentSourceIndex = 0;
+let currentFilter = 'all';
+let selectedEntry = null;
+let expandedRules = new Set();
+let editingRuleId = null;
+let addingRule = false;
+let promptTab = 'prompt';
+let ruleIdCounter = rules.length;
+
+// ─── LOG RENDERING ───────────────────────────────────────────────────────────
+function filteredLog() {
+  return logEntries.filter(e => {
+    if (currentFilter === 'all') return true;
+    if (currentFilter === 'matched') return e.stage === 'yaml';
+    if (currentFilter === 'unmatched') return e.stage === 'fallthrough';
+    if (currentFilter === 'ai') return e.stage === 'ai';
+    return true;
+  });
+}
+
+function renderLog() {
+  const tbody = document.getElementById('log-tbody');
+  const entries = filteredLog();
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">표시할 항목이 없습니다</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = entries.map(e => {
+    const ts = e.ts.replace('T',' ').replace('Z','').slice(5,-3);
+    const stage = e.stage;
+    const badgeClass = stage==='yaml'?'badge-yaml':stage==='ai'?'badge-ai':'badge-fallthrough';
+    const badgeText = stage==='yaml'?'YAML':stage==='ai'?'AI':'미매칭';
+    const rule = e.rule || (stage==='fallthrough'?'—':'');
+    const statusHtml = e.status==='success'?'<span class="status-ok">✓</span>':
+      e.status===null?'<span class="status-none">—</span>':
+      '<span class="status-err">✗</span>';
+    const sel = selectedEntry===e?'selected':'';
+    return `<tr class="log-row ${sel}" onclick="selectEntry(${JSON.stringify(JSON.stringify(e))})">
+      <td class="cell-ts">${ts}</td>
+      <td class="cell-file" title="${escapeHtml(e.file)}">${escapeHtml(e.file)}</td>
+      <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+      <td class="cell-rule" title="${escapeHtml(rule)}">${escapeHtml(rule)}</td>
+      <td class="cell-status">${statusHtml}</td>
+    </tr>`;
+  }).join('');
+  updateStats();
+}
+
+function updateStats() {
+  const total = logEntries.length;
+  const matched = logEntries.filter(e=>e.stage==='yaml').length;
+  const ai = logEntries.filter(e=>e.stage==='ai').length;
+  const un = logEntries.filter(e=>e.stage==='fallthrough').length;
+  document.getElementById('s-total').textContent = `전체 ${total}`;
+  document.getElementById('s-matched').textContent = `✓ YAML ${matched}`;
+  document.getElementById('s-ai').textContent = `AI ${ai}`;
+  document.getElementById('s-unmatched').textContent = `✗ 미매칭 ${un}`;
+}
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.ftab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderLog();
+}
+
+function selectEntry(jsonStr) {
+  const e = JSON.parse(jsonStr);
+  // Compare by stable key (object identity fails after JSON round-trip)
+  if (selectedEntry && selectedEntry.ts === e.ts && selectedEntry.file === e.file) {
+    clearSelection(); return;
+  }
+  selectedEntry = e;
+  document.getElementById('selected-hint').style.display = 'flex';
+  document.getElementById('hint-filename').textContent = e.file;
+  renderLog();
+  updatePrompt();
+  // If unmatched, auto-open add rule form with suggestions
+  if (e.stage === 'fallthrough' && !addingRule) {
+    startAddRule(e);
+  }
+}
+
+function clearSelection() {
+  selectedEntry = null;
+  document.getElementById('selected-hint').style.display = 'none';
+  renderLog();
+  updatePrompt();
+}
+
+// ─── RULE RENDERING ──────────────────────────────────────────────────────────
+function critSummary(rule) {
+  if (rule.mode === 'and') {
+    return rule.criteria.map(c=>c.type==='ext'?`*.${c.value}`:`"${c.value}"`).join(' + ');
+  }
+  if (rule.mode === 'or') {
+    return rule.criteria.map(c=>c.type==='ext'?`*.${c.value}`:`"${c.value}"`).join(' | ');
+  }
+  if (rule.mode === 'groups') {
+    return rule.groups.map(g=>
+      '(' + g.map(c=>c.type==='ext'?`*.${c.value}`:`"${c.value}"`).join('+') + ')'
+    ).join(' | ');
+  }
+  if (rule.mode === 'simple' && rule.criteria.length) {
+    const c = rule.criteria[0];
+    return c.type==='ext'?`*.${c.value}`:`"${c.value}"`;
+  }
+  return '';
+}
+
+function renderRules() {
+  const list = document.getElementById('rule-list');
+  list.innerHTML = rules.map(rule => {
+    const isOpen = expandedRules.has(rule.id);
+    const modBadge = rule.modified ? '<span class="rc-badge badge-mod">수정됨</span>' : '';
+    const newBadge = rule.isNew ? '<span class="rc-badge badge-new">신규</span>' : '';
+    const cardClass = rule.modified?'modified':rule.isNew?'is-new':'';
+    const summary = critSummary(rule);
+    const editForm = (isOpen && editingRuleId === rule.id) ? renderEditForm(rule) : '';
+    return `<div class="rule-card ${cardClass}" id="card-${rule.id}">
+      <div class="rule-card-head" onclick="toggleRule('${rule.id}')">
+        <span class="rc-title">${escapeHtml(rule.title)}</span>
+        <span class="rc-summary">${escapeHtml(summary)}</span>
+        ${modBadge}${newBadge}
+        <span class="expand-icon ${isOpen?'open':''}">▶</span>
+      </div>
+      ${isOpen ? `<div class="rule-form">
+        ${editingRuleId===rule.id ? editForm : renderViewMode(rule)}
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderViewMode(rule) {
+  const summary = critSummary(rule);
+  const modeLabel = {simple:'단순',and:'AND 조건',or:'OR 조건',groups:'그룹 조건'}[rule.mode]||rule.mode;
+  return `<div style="font-size:12px;display:flex;flex-direction:column;gap:6px">
+    <div style="display:flex;gap:10px;align-items:center">
+      <span style="color:#666;font-size:10px;text-transform:uppercase;width:60px">방식</span>
+      <span>${modeLabel}</span>
+    </div>
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <span style="color:#666;font-size:10px;text-transform:uppercase;width:60px">조건</span>
+      <span style="color:#aaa">${summary||'(없음)'}</span>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span style="color:#666;font-size:10px;text-transform:uppercase;width:60px">대상</span>
+      <span style="color:#888;font-family:monospace;font-size:11px">${rule.dest}</span>
+    </div>
+    <div style="margin-top:4px">
+      <button class="btn-sm" onclick="startEdit('${rule.id}')">✎ 편집</button>
+    </div>
+  </div>`;
+}
+
+function renderEditForm(rule, isNew=false) {
+  const critRows = (crits) => crits.map((c,i)=>`
+    <div class="crit-row" id="crit-row-${i}">
+      <select onchange="updateCritType(${JSON.stringify(rule.id)},${i},this.value)">
+        <option value="ext" ${c.type==='ext'?'selected':''}>확장자</option>
+        <option value="name" ${c.type==='name'?'selected':''}>파일명 포함</option>
+      </select>
+      <input type="text" value="${escapeHtml(c.value)}" placeholder="${c.type==='ext'?'예: xlsx':'예: 주간업무'}"
+        oninput="updateCritValue(${JSON.stringify(rule.id)},${i},this.value)">
+      <button class="btn-rem" onclick="removeCrit(${JSON.stringify(rule.id)},${i})">✕</button>
+    </div>`).join('');
+
+  const groupsHtml = rule.mode==='groups' ? `
+    <div class="groups-wrap" id="groups-${rule.id}">
+      ${rule.groups.map((g,gi)=>`
+        <div class="group-box">
+          <div class="group-hdr">
+            <span>그룹 ${gi+1} (AND)</span>
+            <button class="btn-sm" style="font-size:10px;padding:2px 8px" onclick="removeGroup(${JSON.stringify(rule.id)},${gi})">삭제</button>
+          </div>
+          <div class="criteria-list">
+            ${g.map((c,ci)=>`
+              <div class="crit-row">
+                <select onchange="updateGroupCritType(${JSON.stringify(rule.id)},${gi},${ci},this.value)">
+                  <option value="ext" ${c.type==='ext'?'selected':''}>확장자</option>
+                  <option value="name" ${c.type==='name'?'selected':''}>파일명 포함</option>
+                </select>
+                <input type="text" value="${escapeHtml(c.value)}" placeholder="${c.type==='ext'?'예: xlsx':'예: 주간업무'}"
+                  oninput="updateGroupCritValue(${JSON.stringify(rule.id)},${gi},${ci},this.value)">
+                <button class="btn-rem" onclick="removeGroupCrit(${JSON.stringify(rule.id)},${gi},${ci})">✕</button>
+              </div>`).join('')}
+            <button class="btn-sm" style="margin-top:4px" onclick="addGroupCrit(${JSON.stringify(rule.id)},${gi})">+ 조건 추가</button>
+          </div>
+        </div>`).join('')}
+      <button class="btn-sm" onclick="addGroup(${JSON.stringify(rule.id)})">+ 그룹 추가</button>
+    </div>` : `
+    <div class="criteria-list">${critRows(rule.criteria)}</div>
+    <button class="btn-sm" style="margin-top:6px" onclick="addCrit(${JSON.stringify(rule.id)})">+ 조건 추가</button>`;
+
+  return `
+    <div class="form-group">
+      <label class="form-label">제목</label>
+      <input type="text" value="${escapeHtml(rule.title)}" oninput="updateRuleField('${rule.id}','title',this.value)">
+    </div>
+    <div class="form-group">
+      <label class="form-label">매칭 방식</label>
+      <div class="mode-row">
+        <button class="mode-btn ${rule.mode==='simple'?'active':''}" onclick="setRuleMode('${rule.id}','simple')">단순</button>
+        <button class="mode-btn ${rule.mode==='and'?'active':''}" onclick="setRuleMode('${rule.id}','and')">AND</button>
+        <button class="mode-btn ${rule.mode==='or'?'active':''}" onclick="setRuleMode('${rule.id}','or')">OR</button>
+        <button class="mode-btn ${rule.mode==='groups'?'active':''}" onclick="setRuleMode('${rule.id}','groups')">그룹(OR of AND)</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">조건</label>
+      ${groupsHtml}
+    </div>
+    <div class="form-group">
+      <label class="form-label">대상 폴더 (MoveToFolder)</label>
+      <input type="text" value="${escapeHtml(rule.dest)}" placeholder="~/Documents/폴더명" oninput="updateRuleField('${rule.id}','dest',this.value)">
+    </div>
+    <div class="form-actions">
+      <button class="btn-save" onclick="saveRule('${rule.id}')">저장</button>
+      <button class="btn-cancel" onclick="cancelEdit()">취소</button>
+      ${!rule.isNew?`<button class="btn-del" onclick="deleteRule('${rule.id}')">삭제</button>`:''}
+    </div>`;
+}
+
+function toggleRule(id) {
+  if (expandedRules.has(id)) {
+    expandedRules.delete(id);
+    if (editingRuleId === id) editingRuleId = null;
+  } else {
+    expandedRules.add(id);
+  }
+  renderRules();
+}
+
+function startEdit(id) {
+  editingRuleId = id;
+  expandedRules.add(id);
+  renderRules();
+}
+
+function cancelEdit() {
+  const id = editingRuleId;  // capture before nulling (LOW-2 fix)
+  editingRuleId = null;
+  rules = rules.filter(r => !(r.isNew && r.id === id));
+  renderRules();
+  updatePrompt();
+}
+
+function saveRule(id) {
+  const rule = rules.find(r=>r.id===id);
+  if (!rule) return;
+  if (!rule.title.trim()) { alert('제목을 입력하세요'); return; }
+  if (!rule.dest.trim()) { alert('대상 폴더를 입력하세요'); return; }
+  rule.modified = !rule.isNew;
+  rule.isNew = false;
+  editingRuleId = null;
+  addingRule = false;
+  document.getElementById('add-rule-area').style.display = 'none';
+  renderRules();
+  updatePrompt();
+}
+
+function deleteRule(id) {
+  if (!confirm('이 규칙을 삭제하시겠습니까?')) return;
+  rules = rules.filter(r=>r.id!==id);
+  expandedRules.delete(id);
+  editingRuleId = null;
+  renderRules();
+  updatePrompt();
+}
+
+// ─── CRITERIA MUTATIONS ──────────────────────────────────────────────────────
+function getRule(id) { return rules.find(r=>r.id===id); }
+
+function updateRuleField(id, field, val) {
+  const r = getRule(id); if (!r) return;
+  r[field] = val;
+  updatePrompt();
+}
+
+function setRuleMode(id, mode) {
+  const r = getRule(id); if (!r) return;
+  r.mode = mode;
+  if (mode === 'groups' && r.groups.length === 0) r.groups = [[]];
+  renderRules(); updatePrompt();
+}
+
+function addCrit(id) {
+  const r = getRule(id); if (!r) return;
+  r.criteria.push({type:'ext',value:''});
+  renderRules();
+}
+function removeCrit(id, i) {
+  const r = getRule(id); if (!r) return;
+  r.criteria.splice(i,1); renderRules(); updatePrompt();
+}
+function updateCritType(id, i, val) {
+  const r = getRule(id); if (!r) return;
+  r.criteria[i].type = val; updatePrompt();
+}
+function updateCritValue(id, i, val) {
+  const r = getRule(id); if (!r) return;
+  r.criteria[i].value = val; updatePrompt();
+}
+function addGroup(id) {
+  const r = getRule(id); if (!r) return;
+  r.groups.push([]); renderRules();
+}
+function removeGroup(id, gi) {
+  const r = getRule(id); if (!r) return;
+  r.groups.splice(gi,1); renderRules(); updatePrompt();
+}
+function addGroupCrit(id, gi) {
+  const r = getRule(id); if (!r) return;
+  r.groups[gi].push({type:'ext',value:''}); renderRules();
+}
+function removeGroupCrit(id, gi, ci) {
+  const r = getRule(id); if (!r) return;
+  r.groups[gi].splice(ci,1); renderRules(); updatePrompt();
+}
+function updateGroupCritType(id, gi, ci, val) {
+  const r = getRule(id); if (!r) return;
+  r.groups[gi][ci].type = val; updatePrompt();
+}
+function updateGroupCritValue(id, gi, ci, val) {
+  const r = getRule(id); if (!r) return;
+  r.groups[gi][ci].value = val; updatePrompt();
+}
+
+// ─── ADD RULE ─────────────────────────────────────────────────────────────────
+function startAddRule(entry) {
+  addingRule = true;
+  const id = 'r' + (ruleIdCounter++);
+  // Auto-suggest criteria from selected entry
+  let suggestedCrit = [];
+  let suggestedMode = 'simple';
+  let suggestedTitle = '';
+  let suggestedDest = '~/Documents/';
+  if (entry) {
+    const fname = entry.file;
+    const parts = fname.split('.');
+    const ext = parts.length>1 ? parts[parts.length-1] : '';
+    if (ext && ext.length<=10) {
+      suggestedCrit.push({type:'ext', value:ext});
+      suggestedMode = 'simple';
+      suggestedTitle = `${ext} 파일 이동`;
+      suggestedDest = `~/Documents/${ext}/`;
+    } else {
+      // No extension — suggest by name
+      const cleanName = fname.replace(/\.[^.]+$/,'').slice(0,20);
+      suggestedCrit.push({type:'name', value:cleanName});
+      suggestedTitle = `${cleanName} 이동`;
+    }
+  }
+  const newRule = {id, title:suggestedTitle, mode:suggestedMode,
+    criteria:suggestedCrit, groups:[], dest:suggestedDest, modified:false, isNew:true};
+  rules.push(newRule);
+  expandedRules.add(id);
+  editingRuleId = id;
+  document.getElementById('add-rule-area').style.display = 'none';
+  renderRules();
+  // Scroll to bottom of rule list
+  const scroll = document.getElementById('rule-scroll');
+  setTimeout(()=>{ scroll.scrollTop = scroll.scrollHeight; }, 50);
+}
+
+function cancelAddRule() {
+  addingRule = false;
+  rules = rules.filter(r=>!r.isNew);
+  editingRuleId = null;
+  document.getElementById('add-rule-area').style.display = 'none';
+  renderRules();
+  updatePrompt();
+}
+
+// ─── YAML GENERATION ─────────────────────────────────────────────────────────
+function critToYaml(c, indent) {
+  const sp = '  '.repeat(indent);
+  if (c.type==='ext') return `${sp}- FileExtension: "${c.value}"\n`;
+  return `${sp}- FileNameContains: "${c.value}"\n`;
+}
+
+function ruleToYaml(rule) {
+  let y = `- Title: "${rule.title}"\n`;
+  y += `  Criteria:\n`;
+  if (rule.mode === 'simple' || rule.mode === 'and') {
+    if (rule.criteria.length === 1 && rule.mode === 'simple') {
+      y += critToYaml(rule.criteria[0], 2);
+    } else {
+      y += `    - AllCriteria:\n`;
+      for (const c of rule.criteria) y += critToYaml(c, 3);
+    }
+  } else if (rule.mode === 'or') {
+    y += `    - AnyCriteria:\n`;
+    for (const c of rule.criteria) y += critToYaml(c, 3);
+  } else if (rule.mode === 'groups') {
+    y += `    - AnyCriteria:\n`;
+    for (const g of rule.groups) {
+      if (g.length === 1) {
+        y += critToYaml(g[0], 3);
+      } else {
+        y += `      - AllCriteria:\n`;
+        for (const c of g) y += critToYaml(c, 4);
+      }
+    }
+  }
+  y += `  Actions:\n    - MoveToFolder: "${rule.dest}"\n`;
+  return y;
+}
+
+function generateFullYaml() {
+  let y = `Rules:\n`;
+  for (const r of rules) {
+    y += ruleToYaml(r).split('\n').map(l=>l?'  '+l:'').join('\n') + '\n';
+  }
+  if (aiRules) {
+    y += `# AI 규칙 (Ollama 필요)\n`;
+    y += `AiRules:\n`;
+    y += `  Model: ${aiRules.model}\n`;
+    y += `  ConfidenceThreshold: ${aiRules.confidenceThreshold}\n`;
+    y += `  TimeoutSeconds: ${aiRules.timeoutSeconds || 60}\n`;
+    y += `  Rules:\n`;
+    for (const r of (aiRules.rules || [])) {
+      y += `    - Title: "${r.title}"\n`;
+      y += `      Description: "${r.description}"\n`;
+      y += `      Actions:\n        - MoveToFolder: ${r.dest}\n`;
+    }
+  }
+  return y;
+}
+
+// ─── PROMPT UPDATE ────────────────────────────────────────────────────────────
+function switchPromptTab(tab) {
+  promptTab = tab;
+  document.getElementById('tab-prompt').classList.toggle('active', tab==='prompt');
+  document.getElementById('tab-yaml').classList.toggle('active', tab==='yaml');
+  updatePrompt();
+}
+
+function updatePrompt() {
+  const out = document.getElementById('prompt-out');
+  if (promptTab === 'yaml') {
+    out.textContent = generateFullYaml();
+    return;
+  }
+  // Summary prompt
+  const unmatched = logEntries.filter(e=>e.stage==='fallthrough');
+  const uniqueUnmatched = [...new Set(unmatched.map(e=>e.file))];
+  const modifiedRules = rules.filter(r=>r.modified);
+  const newRules = rules.filter(r=>r.isNew);
+
+  let parts = [];
+
+  if (uniqueUnmatched.length > 0) {
+    parts.push(`Downloads 폴더에서 처리되지 않은 파일 ${uniqueUnmatched.length}종 발견:\n${uniqueUnmatched.map(f=>`  • ${f}`).join('\n')}`);
+  }
+
+  if (selectedEntry && selectedEntry.stage === 'fallthrough') {
+    parts.push(`현재 선택: "${selectedEntry.file}" — 이 파일에 대한 규칙이 없습니다.`);
+  }
+
+  if (newRules.length > 0) {
+    parts.push(`새 규칙 ${newRules.length}개 추가 예정:\n${newRules.map(r=>`  • "${r.title}" → ${r.dest}`).join('\n')}`);
+  }
+
+  if (modifiedRules.length > 0) {
+    parts.push(`수정된 규칙 ${modifiedRules.length}개:\n${modifiedRules.map(r=>`  • "${r.title}"`).join('\n')}`);
+  }
+
+  if (parts.length === 0) {
+    out.textContent = '변경 사항이 없습니다. 미매칭 파일을 선택하거나 규칙을 추가/수정해 보세요.';
+    return;
+  }
+
+  const hasChanges = newRules.length > 0 || modifiedRules.length > 0;
+  let prompt = parts.join('\n\n');
+
+  if (hasChanges) {
+    prompt += `\n\n위 내용을 반영하여 ~/Downloads/.FolderActions.yaml을 다음과 같이 업데이트해 주세요:\n\n`;
+    prompt += generateFullYaml();
+  }
+
+  out.textContent = prompt;
+}
+
+// ─── FILE LOADING ─────────────────────────────────────────────────────────────
+function loadLogFiles(event) {
+  const files = Array.from(event.target.files);
+  const newEntries = [];
+  let pending = files.length;
+  files.forEach(f => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const lines = e.target.result.split('\n').filter(l=>l.trim());
+      lines.forEach(l => {
+        try { newEntries.push(JSON.parse(l)); } catch {}
+      });
+      pending--;
+      if (pending === 0) {
+        logEntries = newEntries.sort((a,b)=>a.ts.localeCompare(b.ts));
+        renderLog();
+        updatePrompt();
+      }
+    };
+    reader.readAsText(f);
+  });
+}
+
+// ─── COPY ─────────────────────────────────────────────────────────────────────
+function copyPrompt() {
+  const text = document.getElementById('prompt-out').textContent;
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = '복사됨!';
+    btn.classList.add('copied');
+    setTimeout(()=>{ btn.textContent='복사'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+// ─── SERVER INTEGRATION ───────────────────────────────────────────────────────
+async function init() {
+  try {
+    const resp = await fetch('/api/data');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    logEntries = (data.logs || []);
+    sources = data.sources || [];
+    if (sources.length > 0) {
+      _loadSource(0);
+      _renderSourceSelector();
+    }
+    renderLog();
+    updatePrompt();
+  } catch (e) {
+    // No server: show empty state
+    renderLog();
+    renderRules();
+    updatePrompt();
+    const tbody = document.getElementById('log-tbody');
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state" style="color:#666">서버에 연결 중 오류<br><span style="font-size:10px;color:#444">folder-actions dashboard 실행 후 새로고침</span></div></td></tr>';
+  }
+}
+
+function _loadSource(index) {
+  if (index < 0 || index >= sources.length) return;
+  currentSourceIndex = index;
+  const src = sources[index];
+  rules = src.rules || [];
+  aiRules = src.aiRules || null;
+  ruleIdCounter = rules.length;
+  expandedRules = new Set();
+  editingRuleId = null;
+  renderRules();
+}
+
+function _renderSourceSelector() {
+  const sel = document.getElementById('source-select');
+  if (!sel) return;
+  if (sources.length <= 1) { sel.style.display = 'none'; return; }
+  sel.style.display = '';
+  sel.innerHTML = sources.map((s, i) => {
+    const name = s.folder.split('/').pop() || s.folder;
+    return `<option value="${i}" title="${s.folder}">${name}</option>`;
+  }).join('');
+  sel.value = String(currentSourceIndex);
+}
+
+function switchSource(indexStr) {
+  _loadSource(parseInt(indexStr));
+  updatePrompt();
+}
+
+async function refreshData() {
+  const btn = document.querySelector('button[onclick="refreshData()"]');
+  if (btn) { btn.textContent = '↻ 로딩중...'; btn.disabled = true; }
+  selectedEntry = null;
+  document.getElementById('selected-hint').style.display = 'none';
+  await init();
+  if (btn) { btn.textContent = '↻ 새로고침'; btn.disabled = false; }
+}
+
+async function saveToFile() {
+  const src = sources[currentSourceIndex];
+  if (!src) { alert('저장할 소스가 없습니다'); return; }
+  const btn = document.getElementById('save-file-btn');
+  if (btn) { btn.textContent = '저장 중...'; btn.disabled = true; }
+  try {
+    const resp = await fetch('/api/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({yamlPath: src.yamlPath, rules, aiRules}),
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      rules.forEach(r => { r.modified = false; r.isNew = false; });
+      sources[currentSourceIndex].rules = JSON.parse(JSON.stringify(rules));
+      renderRules();
+      updatePrompt();
+      if (btn) { btn.textContent = '✓ 저장됨'; btn.classList.add('saved');
+        setTimeout(() => { btn.textContent = '💾 저장'; btn.classList.remove('saved'); btn.disabled = false; }, 2000); }
+    } else {
+      alert('저장 실패: ' + result.error);
+      if (btn) { btn.textContent = '💾 저장'; btn.disabled = false; }
+    }
+  } catch (e) {
+    alert('저장 실패: ' + e.message);
+    if (btn) { btn.textContent = '💾 저장'; btn.disabled = false; }
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

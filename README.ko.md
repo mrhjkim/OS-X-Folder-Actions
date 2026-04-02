@@ -19,7 +19,9 @@ Mac OS X에는 폴더 액션(Folder Actions)이라는 멋진 기능이 있습니
    - **Stage 2 (AI 규칙):** YAML 규칙이 매칭되지 않을 때 [Ollama](https://ollama.ai) 로컬 LLM이 파일 내용으로 분류
    - **Stage 3 (Fallthrough):** 명시적 미매칭 로그 기록
 
-4. **folder-actions log** — JSONL 감사 로그 조회 CLI (`--file`, `--rule`, `--since`, `--watch`).
+4. **folder-actions log / dashboard** — 두 가지 방법으로 기록을 확인할 수 있습니다:
+   - `folder-actions log` — JSONL 감사 로그 조회 CLI (`--file`, `--rule`, `--since`, `--watch`)
+   - `folder-actions dashboard` — 인터랙티브 웹 대시보드: 로그 탐색, 미매칭 파일 확인, 규칙 편집, `.FolderActions.yaml`에 바로 저장
 
 감시할 폴더에 `.FolderActions.yaml` 파일을 작성하고 배치하기만 하면 됩니다.
 
@@ -76,3 +78,12 @@ folder-actions log              # 최근 20개 항목
 folder-actions log --watch      # 실시간 모니터링
 folder-actions log --file invoice --since 2026-01-01
 ```
+
+5. 또는 시각적 대시보드를 열어 로그를 탐색하고 규칙을 편집합니다:
+
+```bash
+folder-actions dashboard        # 브라우저에서 http://localhost:7373 열기
+folder-actions dashboard --port 8080
+```
+
+대시보드는 실시간 감사 로그를 읽어 어떤 파일이 매칭됐는지(또는 안 됐는지) 보여주고, 규칙을 직접 편집하여 한 번의 클릭으로 `.FolderActions.yaml`에 저장할 수 있습니다.

@@ -19,7 +19,9 @@ There are four main components:
    - **Stage 2 (AI rules):** local LLM via [Ollama](https://ollama.ai) classifies files by content when YAML rules don't match
    - **Stage 3 (Fallthrough):** explicit no-match log entry
 
-4. **folder-actions log** — CLI to query the JSONL audit log (`--file`, `--rule`, `--since`, `--watch`).
+4. **folder-actions log / dashboard** — two ways to review what happened:
+   - `folder-actions log` — CLI to query the JSONL audit log (`--file`, `--rule`, `--since`, `--watch`)
+   - `folder-actions dashboard` — interactive web dashboard: browse logs, spot unmatched files, edit rules, and save changes back to `.FolderActions.yaml` in one click
 
 All you have to do is write a `.FolderActions.yaml` config file and place it in the folder you want to watch.
 
@@ -76,3 +78,12 @@ folder-actions log              # last 20 entries
 folder-actions log --watch      # live tail
 folder-actions log --file invoice --since 2026-01-01
 ```
+
+5. Or open the visual dashboard to browse logs and edit rules:
+
+```bash
+folder-actions dashboard        # opens http://localhost:7373 in your browser
+folder-actions dashboard --port 8080
+```
+
+The dashboard reads your live audit log, shows which files matched (or didn't), lets you edit rules directly, and saves changes back to `.FolderActions.yaml` with one click.

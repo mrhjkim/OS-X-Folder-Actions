@@ -15,7 +15,7 @@ echo "  Bin  : $BIN"
 
 # 0. Ensure ~/.local/bin exists and is on PATH
 mkdir -p "$BIN"
-if [[ ":$PATH:" != *":$BIN:"* ]]; then
+if ! grep -qF "$BIN" "$HOME/.zshrc" 2>/dev/null; then
     echo "Adding $BIN to PATH in ~/.zshrc..."
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
     echo "  Note: run 'source ~/.zshrc' or open a new terminal after install."
@@ -33,12 +33,14 @@ echo "Installing Python dependencies..."
 
 # 3. Copy Python scripts
 echo "Copying Python scripts to $BIN..."
-cp "$REPO_DIR/FolderActionsDispatcher.py" "$BIN/"
-cp "$REPO_DIR/.FolderActions.py"          "$BIN/"
-cp "$REPO_DIR/AuditLogger.py"             "$BIN/"
-cp "$REPO_DIR/ContentExtractor.py"        "$BIN/"
-cp "$REPO_DIR/AIProvider.py"              "$BIN/"
-cp "$REPO_DIR/FolderActionsLog.py"        "$BIN/"
+cp "$REPO_DIR/FolderActionsDispatcher.py"   "$BIN/"
+cp "$REPO_DIR/.FolderActions.py"            "$BIN/"
+cp "$REPO_DIR/AuditLogger.py"              "$BIN/"
+cp "$REPO_DIR/ContentExtractor.py"         "$BIN/"
+cp "$REPO_DIR/AIProvider.py"               "$BIN/"
+cp "$REPO_DIR/FolderActionsLog.py"         "$BIN/"
+cp "$REPO_DIR/FolderActionsDashboard.py"   "$BIN/"
+cp "$REPO_DIR/folder-actions-dashboard.html" "$BIN/"
 
 # 4. Install dispatcher shell script
 echo "Installing FolderActionsDispatcher.sh..."
@@ -50,12 +52,18 @@ echo "Installing folder-actions CLI..."
 cat > "$BIN/folder-actions" <<EOF
 #!/bin/bash
 source "$VENV/bin/activate"
-# Strip optional 'log' subcommand: 'folder-actions log --watch' == 'folder-actions --watch'
 args=("\$@")
-if [ "\${args[0]:-}" = "log" ]; then
-  args=("\${args[@]:1}")
+subcmd="\${args[0]:-}"
+if [ "\$subcmd" = "dashboard" ]; then
+  # folder-actions dashboard [--port N]
+  python "$BIN/FolderActionsDashboard.py" "\${args[@]:1}"
+elif [ "\$subcmd" = "log" ]; then
+  # folder-actions log [options]  — strip the 'log' token
+  python "$BIN/FolderActionsLog.py" "\${args[@]:1}"
+else
+  # folder-actions [options]  — legacy: no subcommand
+  python "$BIN/FolderActionsLog.py" "\${args[@]}"
 fi
-python "$BIN/FolderActionsLog.py" "\${args[@]}"
 EOF
 chmod +x "$BIN/folder-actions"
 
