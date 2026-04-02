@@ -3,3 +3,4 @@ pypdf
 python-docx
 openpyxl
 requests
+pytest
