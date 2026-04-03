@@ -330,3 +330,49 @@ class TestApplyRuleByYamlConfig:
             assert not os.path.exists(os.path.join(str(target), "file.txt"))
         finally:
             shutil.rmtree(folder)
+
+    def test_ai_agent_module_unavailable_returns_error(self, tmp_path):
+        """When _AI_AGENT_AVAILABLE is False the AiAgent action reports an error and stops."""
+        prompt = tmp_path / "prompt.txt"
+        prompt.write_text("do something", encoding="utf-8")
+        folder = self._make_folder(f"""
+            Rules:
+              - Title: "agent unavailable"
+                Criteria:
+                  - FileExtension: txt
+                Actions:
+                  - AiAgent:
+                      Model: claude
+                      PromptFile: "{prompt}"
+        """, filenames=["file.txt"])
+        try:
+            with patch.object(_mod, "_AI_AGENT_AVAILABLE", False):
+                matched, _, dest, err, results = apply_rule_by_yaml_config(folder, "file.txt")
+            assert matched is True
+            assert err is not None
+            assert results[0]["status"] == "error"
+            assert "unavailable" in results[0]["error"].lower()
+        finally:
+            shutil.rmtree(folder)
+
+    def test_ai_agent_missing_prompt_file_is_skipped(self, tmp_path):
+        """AiAgent with no PromptFile is skipped (continue) — not a fatal error."""
+        target = tmp_path / "out"
+        folder = self._make_folder(f"""
+            Rules:
+              - Title: "no prompt"
+                Criteria:
+                  - FileExtension: txt
+                Actions:
+                  - AiAgent:
+                      Model: claude
+                  - MoveToFolder: "{target}"
+        """, filenames=["file.txt"])
+        try:
+            matched, _, dest, err, results = apply_rule_by_yaml_config(folder, "file.txt")
+            assert matched is True
+            assert results[0]["status"] == "skipped"
+            # MoveToFolder still runs after the skipped AiAgent
+            assert results[1]["action"] == "MoveToFolder"
+        finally:
+            shutil.rmtree(folder)
