@@ -98,8 +98,9 @@ def parse_yaml_file(yaml_path):
     rules = []
     for i, r in enumerate(config.get("Rules", [])):
         title = r.get("Title", f"Rule {i + 1}")
+        actions = _normalize_actions(r.get("Actions", []))
         dest = ""
-        for action in r.get("Actions", []):
+        for action in actions:
             if "MoveToFolder" in action:
                 dest = action["MoveToFolder"]
                 break
@@ -112,6 +113,7 @@ def parse_yaml_file(yaml_path):
             "criteria": parsed_criteria,
             "groups": groups,
             "dest": dest,
+            "actions": actions,
             "modified": False,
             "isNew": False,
         })
@@ -197,6 +199,14 @@ def _crit_item(item):
     return None
 
 
+def _normalize_actions(actions):
+    normalized = []
+    for action in actions or []:
+        if isinstance(action, dict):
+            normalized.append(dict(action))
+    return normalized
+
+
 # ─── YAML GENERATION (SAVE) ───────────────────────────────────────────────────
 
 def rules_to_yaml(rules, ai_rules):
@@ -204,10 +214,11 @@ def rules_to_yaml(rules, ai_rules):
     config = {"Rules": []}
 
     for r in rules:
+        actions = _serialize_rule_actions(r)
         config["Rules"].append({
             "Title": r["title"],
             "Criteria": _build_criteria_yaml(r),
-            "Actions": [{"MoveToFolder": r["dest"]}],
+            "Actions": actions,
         })
 
     if ai_rules and ai_rules.get("rules"):
@@ -229,6 +240,26 @@ def rules_to_yaml(rules, ai_rules):
         config["AiRules"] = ai_cfg
 
     return yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+
+def _serialize_rule_actions(rule):
+    """Preserve existing action order while applying edited MoveToFolder values."""
+    actions = _normalize_actions(rule.get("actions", []))
+    if not actions:
+        return [{"MoveToFolder": rule.get("dest", "")}]
+
+    serialized = []
+    move_written = False
+    for action in actions:
+        if "MoveToFolder" in action:
+            serialized.append({"MoveToFolder": rule.get("dest", action["MoveToFolder"])})
+            move_written = True
+        else:
+            serialized.append(dict(action))
+
+    if rule.get("dest") and not move_written:
+        serialized.append({"MoveToFolder": rule["dest"]})
+    return serialized
 
 
 def _build_criteria_yaml(rule):

@@ -32,7 +32,8 @@ class TestRenderPromptTemplate:
             AIAgentAction.render_prompt_template(prompt_file, str(tmp_path / "file.txt"))
 
     def test_unescaped_braces_raise_value_error(self, tmp_path):
-        prompt_file = _write_prompt(tmp_path, "prompt.txt", '{"key": "value"}')
+        # A template with a single unmatched { triggers ValueError from str.format()
+        prompt_file = _write_prompt(tmp_path, "prompt.txt", "value is {")
         with pytest.raises(ValueError, match="Invalid template"):
             AIAgentAction.render_prompt_template(prompt_file, str(tmp_path / "file.txt"))
 
@@ -45,6 +46,10 @@ class TestRenderPromptTemplate:
 class TestBuildAgentCommand:
     def test_claude_command_uses_print_mode(self):
         cmd = AIAgentAction.build_agent_command("claude", "hello")
+        assert cmd == ["claude", "-p", "hello"]
+
+    def test_claude_command_with_dangerous_permissions(self):
+        cmd = AIAgentAction.build_agent_command("claude", "hello", dangerous_permissions=True)
         assert cmd == ["claude", "-p", "hello", "--dangerously-skip-permissions"]
 
     def test_codex_command_uses_workspace_write(self):

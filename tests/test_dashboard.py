@@ -105,8 +105,29 @@ Rules:
             assert len(rules) == 1
             assert rules[0]["title"] == "PDFs"
             assert rules[0]["dest"] == "~/Documents/PDFs/"
+            assert rules[0]["actions"] == [{"MoveToFolder": "~/Documents/PDFs/"}]
             assert rules[0]["mode"] == "simple"
             assert ai_rules is None
+        finally:
+            os.unlink(path)
+
+    def test_ai_agent_actions_are_preserved(self):
+        path = self._write_yaml("""
+Rules:
+  - Title: "PDF summary"
+    Criteria:
+      - FileExtension: pdf
+    Actions:
+      - AiAgent:
+          Model: claude
+          PromptFile: ~/.config/folder-actions/summarize.txt
+      - MoveToFolder: ~/Documents/PDFs/
+""")
+        try:
+            rules, ai_rules = parse_yaml_file(path)
+            assert ai_rules is None
+            assert rules[0]["actions"][0]["AiAgent"]["Model"] == "claude"
+            assert rules[0]["actions"][1] == {"MoveToFolder": "~/Documents/PDFs/"}
         finally:
             os.unlink(path)
 
@@ -157,6 +178,7 @@ class TestRulesToYaml:
             "criteria": [{"type": "ext", "value": "pdf"}],
             "groups": [],
             "dest": "~/Documents/PDFs/",
+            "actions": [{"MoveToFolder": "~/Documents/PDFs/"}],
         }]
         text = rules_to_yaml(rules, None)
         parsed = yaml.safe_load(text)
@@ -171,6 +193,7 @@ class TestRulesToYaml:
             "criteria": [{"type": "ext", "value": "xlsx"}, {"type": "name", "value": "weekly"}],
             "groups": [],
             "dest": "~/Reports/",
+            "actions": [{"MoveToFolder": "~/Reports/"}],
         }]
         text = rules_to_yaml(rules, None)
         parsed = yaml.safe_load(text)
@@ -184,6 +207,7 @@ class TestRulesToYaml:
             "criteria": [{"type": "ext", "value": "pdf"}, {"type": "ext", "value": "docx"}],
             "groups": [],
             "dest": "~/Docs/",
+            "actions": [{"MoveToFolder": "~/Docs/"}],
         }]
         text = rules_to_yaml(rules, None)
         parsed = yaml.safe_load(text)
@@ -200,6 +224,7 @@ class TestRulesToYaml:
                 [{"type": "ext", "value": "xlsx"}, {"type": "name", "value": "q2"}],
             ],
             "dest": "~/Quarterly/",
+            "actions": [{"MoveToFolder": "~/Quarterly/"}],
         }]
         text = rules_to_yaml(rules, None)
         parsed = yaml.safe_load(text)
@@ -232,6 +257,49 @@ class TestRulesToYaml:
         text = rules_to_yaml([], ai_rules)
         parsed = yaml.safe_load(text)
         assert parsed["AiRules"]["TimeoutSeconds"] == 120
+
+    def test_mixed_action_sequence_round_trips(self):
+        rules = [{
+            "title": "PDF summary",
+            "mode": "simple",
+            "criteria": [{"type": "ext", "value": "pdf"}],
+            "groups": [],
+            "dest": "~/Documents/PDFs/",
+            "actions": [
+                {"AiAgent": {"Model": "claude", "PromptFile": "~/.config/folder-actions/summarize.txt"}},
+                {"MoveToFolder": "~/Documents/PDFs/"},
+            ],
+        }]
+        text = rules_to_yaml(rules, None)
+        parsed = yaml.safe_load(text)
+        actions = parsed["Rules"][0]["Actions"]
+        assert actions[0]["AiAgent"]["Model"] == "claude"
+        assert actions[1] == {"MoveToFolder": "~/Documents/PDFs/"}
+
+    def test_round_trip_preserves_ai_agent_rule(self):
+        original = """
+Rules:
+  - Title: "PDF summary"
+    Criteria:
+      - FileExtension: pdf
+    Actions:
+      - AiAgent:
+          Model: claude
+          PromptFile: ~/.config/folder-actions/summarize.txt
+      - MoveToFolder: ~/Documents/PDFs/
+"""
+        fd, path = tempfile.mkstemp(suffix=".yaml")
+        with os.fdopen(fd, "w") as f:
+            f.write(original)
+        try:
+            rules, ai_rules = parse_yaml_file(path)
+            text = rules_to_yaml(rules, ai_rules)
+            parsed = yaml.safe_load(text)
+            actions = parsed["Rules"][0]["Actions"]
+            assert actions[0]["AiAgent"]["PromptFile"] == "~/.config/folder-actions/summarize.txt"
+            assert actions[1] == {"MoveToFolder": "~/Documents/PDFs/"}
+        finally:
+            os.unlink(path)
 
 
 # ------------------------------------------------------------------
