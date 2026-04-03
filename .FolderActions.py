@@ -277,7 +277,7 @@ def apply_rule_by_yaml_config(folder: str, item: str, config=None):
         config = _load_yaml_config(config_path)
 
     if not config:
-        return (False, None, None, None)
+        return (False, None, None, None, [])
 
     item_nfc = unicodedata.normalize("NFC", item)
 
@@ -345,7 +345,7 @@ def apply_rule_by_yaml_config(folder: str, item: str, config=None):
                     action_error = str(e)
                     logging.error(
                         f"Shell command failed: {script}: {e}\n"
-                        f"stdout: {e.stdout.decode()}\nstderr: {e.stderr.decode()}"
+                        f"stdout: {e.stdout.decode(errors='replace')}\nstderr: {e.stderr.decode(errors='replace')}"
                     )
                     action_results.append({
                         "action": "RunShellScript",
@@ -388,7 +388,7 @@ def apply_rule_by_yaml_config(folder: str, item: str, config=None):
                     })
                     continue
 
-                dangerous_permissions = bool(cfg.get("AllowDangerousPermissions", False))
+                dangerous_permissions = cfg.get("AllowDangerousPermissions") is True
                 success, output = AIAgentAction.run_ai_agent(
                     model, prompt_file, current_path, timeout, dangerous_permissions
                 )
