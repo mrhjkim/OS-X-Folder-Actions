@@ -87,3 +87,37 @@ folder-actions dashboard --port 8080
 ```
 
 대시보드는 실시간 감사 로그를 읽어 어떤 파일이 매칭됐는지(또는 안 됐는지) 보여주고, 규칙을 직접 편집하여 한 번의 클릭으로 `.FolderActions.yaml`에 저장할 수 있습니다.
+
+## AiAgent 액션
+
+일반 `Rules` 아래에 `AiAgent:` 를 추가하면 파일 이동만 하는 대신, 매칭된 파일에 대해
+AI CLI 명령을 실행할 수 있습니다.
+
+```yaml
+Rules:
+  - Title: "PDF 요약"
+    Criteria:
+      - FileExtension: pdf
+    Actions:
+      - AiAgent:
+          Model: claude
+          PromptFile: ~/.config/folder-actions/summarize-pdf.txt
+          AllowDangerousPermissions: true   # opt-in: Claude가 확인 없이 동작하도록 허용
+      - MoveToFolder: ~/Documents/PDFs/
+```
+
+프롬프트 템플릿에서 사용할 수 있는 변수:
+- `{filepath}` 전체 파일 경로
+- `{filename}` 확장자 없는 파일명
+- `{basename}` 확장자 포함 파일명
+- `{folder}` 파일이 있는 폴더 경로
+- `{ext}` 점 없는 확장자
+
+메모:
+- 이번 릴리스에서 검증된 provider: `claude`, `codex`
+- `gemini` 는 설정 이름은 예약되어 있지만 아직 검증되지 않아 명시적 오류를 반환합니다
+- 액션은 순차적으로 실행되므로 `MoveToFolder` 다음 `AiAgent` 는 이동된 경로 기준으로 실행됩니다
+- 대시보드는 YAML 저장 시 `AiAgent` 액션을 보존합니다
+- AiAgent 액션은 동기식으로 실행됩니다 — AI 명령이 완료될 때까지 핸들러가 블로킹됩니다 (최대 `TimeoutSeconds`, 기본값 120초). 파일이 자주 드롭되는 폴더에서는 `TimeoutSeconds`를 낮게 설정하세요.
+
+**보안 참고:** 기본적으로 `AllowDangerousPermissions`는 `false`입니다 — AI 에이전트는 파괴적인 작업 전에 확인을 요청합니다. 프롬프트 템플릿과 드롭되는 파일을 완전히 신뢰하는 자동화 워크플로에서만 `true`로 설정하세요.

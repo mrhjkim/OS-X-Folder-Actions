@@ -87,3 +87,37 @@ folder-actions dashboard --port 8080
 ```
 
 The dashboard reads your live audit log, shows which files matched (or didn't), lets you edit rules directly, and saves changes back to `.FolderActions.yaml` with one click.
+
+## AiAgent actions
+
+You can add `AiAgent:` under normal `Rules` when you want a matching file to trigger
+an AI CLI command instead of just moving the file.
+
+```yaml
+Rules:
+  - Title: "Summarize PDFs"
+    Criteria:
+      - FileExtension: pdf
+    Actions:
+      - AiAgent:
+          Model: claude
+          PromptFile: ~/.config/folder-actions/summarize-pdf.txt
+          AllowDangerousPermissions: true   # opt-in: lets Claude act without prompts
+      - MoveToFolder: ~/Documents/PDFs/
+```
+
+Supported variables in the prompt template:
+- `{filepath}` full file path
+- `{filename}` file name without extension
+- `{basename}` file name with extension
+- `{folder}` containing folder
+- `{ext}` extension without the dot
+
+Notes:
+- Verified providers in this release: `claude`, `codex`
+- `gemini` is reserved in the config surface but returns an explicit "not yet verified" error
+- Actions run sequentially, so `MoveToFolder` followed by `AiAgent` runs the AI command on the moved path
+- The dashboard preserves `AiAgent` actions when saving YAML files
+- AiAgent actions are synchronous — the handler blocks until the AI command finishes (up to `TimeoutSeconds`, default 120s). For folders with high drop frequency, use a lower `TimeoutSeconds` or avoid chaining multiple AiAgent actions.
+
+**Security note:** By default, `AllowDangerousPermissions` is `false` — the AI agent will prompt before taking destructive actions. Set it to `true` only for fully automated workflows where you trust both the prompt template and the files being dropped. File names and paths are embedded in the prompt; rename them to avoid unintended instructions.
