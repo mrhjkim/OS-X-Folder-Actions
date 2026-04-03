@@ -32,7 +32,8 @@ class TestRenderPromptTemplate:
             AIAgentAction.render_prompt_template(prompt_file, str(tmp_path / "file.txt"))
 
     def test_unescaped_braces_raise_value_error(self, tmp_path):
-        prompt_file = _write_prompt(tmp_path, "prompt.txt", '{"key": "value"}')
+        # A template with a single unmatched { triggers ValueError from str.format()
+        prompt_file = _write_prompt(tmp_path, "prompt.txt", "value is {")
         with pytest.raises(ValueError, match="Invalid template"):
             AIAgentAction.render_prompt_template(prompt_file, str(tmp_path / "file.txt"))
 
@@ -45,6 +46,10 @@ class TestRenderPromptTemplate:
 class TestBuildAgentCommand:
     def test_claude_command_uses_print_mode(self):
         cmd = AIAgentAction.build_agent_command("claude", "hello")
+        assert cmd == ["claude", "-p", "hello"]
+
+    def test_claude_command_with_dangerous_permissions(self):
+        cmd = AIAgentAction.build_agent_command("claude", "hello", dangerous_permissions=True)
         assert cmd == ["claude", "-p", "hello", "--dangerously-skip-permissions"]
 
     def test_codex_command_uses_workspace_write(self):
@@ -78,6 +83,82 @@ class TestResolveExecutable:
         monkeypatch.setattr(AIAgentAction.os.path, "isfile", lambda path: False)
         monkeypatch.setattr(AIAgentAction.os, "access", lambda path, mode: False)
         assert AIAgentAction.resolve_executable("codex") is None
+
+
+class TestRunAiAgent:
+    """Tests for run_ai_agent — the integration layer that invokes the CLI."""
+
+    def _write_prompt(self, tmp_path, content="{filepath}"):
+        p = tmp_path / "prompt.txt"
+        p.write_text(content, encoding="utf-8")
+        return str(p)
+
+    def test_success_returns_true_and_stdout(self, tmp_path, monkeypatch):
+        filepath = str(tmp_path / "file.txt")
+        (tmp_path / "file.txt").write_text("x")
+        prompt_file = self._write_prompt(tmp_path, "{filepath}")
+        monkeypatch.setattr(AIAgentAction.shutil, "which", lambda name: f"/usr/local/bin/{name}")
+
+        import subprocess
+        fake_result = subprocess.CompletedProcess([], 0, stdout="done", stderr="")
+        monkeypatch.setattr(AIAgentAction.subprocess, "run", lambda *a, **kw: fake_result)
+
+        ok, out = AIAgentAction.run_ai_agent("claude", prompt_file, filepath)
+        assert ok is True
+        assert out == "done"
+
+    def test_nonzero_exit_returns_false_with_stderr(self, tmp_path, monkeypatch):
+        filepath = str(tmp_path / "file.txt")
+        (tmp_path / "file.txt").write_text("x")
+        prompt_file = self._write_prompt(tmp_path)
+        monkeypatch.setattr(AIAgentAction.shutil, "which", lambda name: f"/usr/local/bin/{name}")
+
+        import subprocess
+        fake_result = subprocess.CompletedProcess([], 1, stdout="", stderr="oops")
+        monkeypatch.setattr(AIAgentAction.subprocess, "run", lambda *a, **kw: fake_result)
+
+        ok, out = AIAgentAction.run_ai_agent("claude", prompt_file, filepath)
+        assert ok is False
+        assert "oops" in out
+
+    def test_file_not_found_returns_false(self, tmp_path, monkeypatch):
+        filepath = str(tmp_path / "file.txt")
+        (tmp_path / "file.txt").write_text("x")
+        prompt_file = self._write_prompt(tmp_path)
+        monkeypatch.setattr(AIAgentAction.shutil, "which", lambda name: f"/usr/local/bin/{name}")
+        monkeypatch.setattr(AIAgentAction.subprocess, "run",
+                            lambda *a, **kw: (_ for _ in ()).throw(FileNotFoundError("not found")))
+
+        ok, out = AIAgentAction.run_ai_agent("claude", prompt_file, filepath)
+        assert ok is False
+        assert "not found" in out.lower() or "CLI not found" in out
+
+    def test_timeout_expired_returns_false(self, tmp_path, monkeypatch):
+        import subprocess
+        filepath = str(tmp_path / "file.txt")
+        (tmp_path / "file.txt").write_text("x")
+        prompt_file = self._write_prompt(tmp_path)
+        monkeypatch.setattr(AIAgentAction.shutil, "which", lambda name: f"/usr/local/bin/{name}")
+
+        exc = subprocess.TimeoutExpired(cmd="claude", timeout=5)
+        exc.process = None
+        monkeypatch.setattr(AIAgentAction.subprocess, "run",
+                            lambda *a, **kw: (_ for _ in ()).throw(exc))
+
+        ok, out = AIAgentAction.run_ai_agent("claude", prompt_file, filepath, timeout=5)
+        assert ok is False
+        assert "Timed out" in out
+
+    def test_executable_not_found_returns_false(self, tmp_path, monkeypatch):
+        filepath = str(tmp_path / "file.txt")
+        (tmp_path / "file.txt").write_text("x")
+        prompt_file = self._write_prompt(tmp_path)
+        monkeypatch.setattr(AIAgentAction.shutil, "which", lambda name: None)
+        monkeypatch.setattr(AIAgentAction, "_COMMON_EXECUTABLE_DIRS", [])
+
+        ok, out = AIAgentAction.run_ai_agent("claude", prompt_file, filepath)
+        assert ok is False
+        assert "not found" in out.lower()
 
 
 class TestBuildAgentEnv:

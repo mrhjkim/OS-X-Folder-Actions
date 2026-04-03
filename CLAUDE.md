@@ -1,4 +1,23 @@
 
+## Python Environment
+
+This project uses a dedicated virtualenv at `~/.venvs/systools`.
+
+Always use this environment when running Python commands:
+
+```bash
+# Run tests
+~/.venvs/systools/bin/pytest tests/ -v
+
+# Run a script directly
+~/.venvs/systools/bin/python <script.py>
+
+# Install packages
+~/.venvs/systools/bin/pip install <package>
+```
+
+The virtualenv is created by `./install.sh`, which also installs all dependencies from `requirements.txt`.
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill

@@ -6,6 +6,7 @@ import sys
 import tempfile
 import textwrap
 import unicodedata
+from unittest.mock import patch
 
 import pytest
 
@@ -118,11 +119,12 @@ class TestApplyRuleByYamlConfig:
                   - MoveToFolder: /tmp/pdfs/
         """, filenames=["photo.jpg"])
         try:
-            matched, title, dest, err = apply_rule_by_yaml_config(folder, "photo.jpg")
+            matched, title, dest, err, results = apply_rule_by_yaml_config(folder, "photo.jpg")
             assert matched is False
             assert title is None
             assert dest is None
             assert err is None
+            assert results == []
         finally:
             shutil.rmtree(folder)
 
@@ -137,10 +139,11 @@ class TestApplyRuleByYamlConfig:
                   - MoveToFolder: "{target}"
         """, filenames=["report.xlsx"])
         try:
-            matched, title, dest, err = apply_rule_by_yaml_config(folder, "report.xlsx")
+            matched, title, dest, err, results = apply_rule_by_yaml_config(folder, "report.xlsx")
             assert matched is True
             assert title == "XLS files"
             assert err is None
+            assert results[0]["action"] == "MoveToFolder"
             assert os.path.exists(os.path.join(str(target), "report.xlsx"))
         finally:
             shutil.rmtree(folder)
@@ -155,7 +158,7 @@ class TestApplyRuleByYamlConfig:
                   - MoveToFolder: "{target}"
         """, filenames=["doc.pdf"])
         try:
-            matched, title, dest, err = apply_rule_by_yaml_config(folder, "doc.pdf")
+            matched, title, dest, err, _ = apply_rule_by_yaml_config(folder, "doc.pdf")
             assert matched is True
             assert title == "(unnamed)"
         finally:
@@ -167,7 +170,7 @@ class TestApplyRuleByYamlConfig:
               Enabled: false
         """, filenames=["file.txt"])
         try:
-            matched, title, dest, err = apply_rule_by_yaml_config(folder, "file.txt")
+            matched, title, dest, err, _ = apply_rule_by_yaml_config(folder, "file.txt")
             assert matched is False
         finally:
             shutil.rmtree(folder)
@@ -185,9 +188,10 @@ class TestApplyRuleByYamlConfig:
         try:
             import shutil as _shutil
             monkeypatch.setattr(_shutil, "move", lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")))
-            matched, title, dest, err = apply_rule_by_yaml_config(folder, "file.txt")
+            matched, title, dest, err, results = apply_rule_by_yaml_config(folder, "file.txt")
             assert matched is True
             assert "disk full" in err
+            assert results[0]["status"] == "error"
         finally:
             shutil.rmtree(folder)
 
@@ -202,9 +206,10 @@ class TestApplyRuleByYamlConfig:
                   - RunShellScript: "false"
         """, filenames=["file.txt"])
         try:
-            matched, title, dest, err = apply_rule_by_yaml_config(folder, "file.txt")
+            matched, title, dest, err, results = apply_rule_by_yaml_config(folder, "file.txt")
             assert matched is True
             assert err is not None
+            assert results[0]["action"] == "RunShellScript"
         finally:
             shutil.rmtree(folder)
 
@@ -220,7 +225,7 @@ class TestApplyRuleByYamlConfig:
         """, filenames=["doc.pdf"])
         try:
             assert not target.exists()
-            matched, title, dest, err = apply_rule_by_yaml_config(folder, "doc.pdf")
+            matched, title, dest, err, _ = apply_rule_by_yaml_config(folder, "doc.pdf")
             assert matched is True
             assert target.exists()
         finally:
@@ -238,7 +243,136 @@ class TestApplyRuleByYamlConfig:
                   - MoveToFolder: "{target}"
         """, filenames=["file.txt"])
         try:
-            matched, _, _, _ = apply_rule_by_yaml_config(folder, "file.txt")
+            matched, _, _, _, _ = apply_rule_by_yaml_config(folder, "file.txt")
             assert matched is False
+        finally:
+            shutil.rmtree(folder)
+
+    def test_ai_agent_then_move_to_folder_uses_current_path(self, tmp_path):
+        target = tmp_path / "out"
+        prompt = tmp_path / "prompt.txt"
+        prompt.write_text("do something", encoding="utf-8")
+        folder = self._make_folder(f"""
+            Rules:
+              - Title: "agent then move"
+                Criteria:
+                  - FileExtension: txt
+                Actions:
+                  - AiAgent:
+                      Model: claude
+                      PromptFile: "{prompt}"
+                  - MoveToFolder: "{target}"
+        """, filenames=["file.txt"])
+        try:
+            with patch.object(_mod.AIAgentAction, "run_ai_agent", return_value=(True, "ok")) as mock_run:
+                matched, _, dest, err, results = apply_rule_by_yaml_config(folder, "file.txt")
+            assert matched is True
+            assert err is None
+            assert mock_run.call_args[0][2] == os.path.join(folder, "file.txt")
+            assert dest == os.path.join(str(target), "file.txt")
+            assert results[0]["action"] == "AiAgent"
+            assert results[1]["action"] == "MoveToFolder"
+        finally:
+            shutil.rmtree(folder)
+
+    def test_move_then_ai_agent_uses_moved_path(self, tmp_path):
+        target = tmp_path / "out"
+        prompt = tmp_path / "prompt.txt"
+        prompt.write_text("do something", encoding="utf-8")
+        folder = self._make_folder(f"""
+            Rules:
+              - Title: "move then agent"
+                Criteria:
+                  - FileExtension: txt
+                Actions:
+                  - MoveToFolder: "{target}"
+                  - AiAgent:
+                      Model: claude
+                      PromptFile: "{prompt}"
+        """, filenames=["file.txt"])
+        try:
+            with patch.object(_mod.AIAgentAction, "run_ai_agent", return_value=(True, "ok")) as mock_run:
+                matched, _, dest, err, results = apply_rule_by_yaml_config(folder, "file.txt")
+            moved_path = os.path.join(str(target), "file.txt")
+            assert matched is True
+            assert err is None
+            assert dest == moved_path
+            assert mock_run.call_args[0][2] == moved_path
+            assert results[0]["action"] == "MoveToFolder"
+            assert results[1]["action"] == "AiAgent"
+        finally:
+            shutil.rmtree(folder)
+
+    def test_ai_agent_failure_stops_later_actions(self, tmp_path):
+        # Break-on-first-failure: MoveToFolder after a failed AiAgent is not executed.
+        target = tmp_path / "out"
+        prompt = tmp_path / "prompt.txt"
+        prompt.write_text("do something", encoding="utf-8")
+        folder = self._make_folder(f"""
+            Rules:
+              - Title: "agent failure"
+                Criteria:
+                  - FileExtension: txt
+                Actions:
+                  - AiAgent:
+                      Model: claude
+                      PromptFile: "{prompt}"
+                  - MoveToFolder: "{target}"
+        """, filenames=["file.txt"])
+        try:
+            with patch.object(_mod.AIAgentAction, "run_ai_agent", return_value=(False, "boom")):
+                matched, _, dest, err, results = apply_rule_by_yaml_config(folder, "file.txt")
+            assert matched is True
+            assert err == "boom"
+            assert dest is None
+            assert len(results) == 1
+            assert results[0]["status"] == "error"
+            assert not os.path.exists(os.path.join(str(target), "file.txt"))
+        finally:
+            shutil.rmtree(folder)
+
+    def test_ai_agent_module_unavailable_returns_error(self, tmp_path):
+        """When _AI_AGENT_AVAILABLE is False the AiAgent action reports an error and stops."""
+        prompt = tmp_path / "prompt.txt"
+        prompt.write_text("do something", encoding="utf-8")
+        folder = self._make_folder(f"""
+            Rules:
+              - Title: "agent unavailable"
+                Criteria:
+                  - FileExtension: txt
+                Actions:
+                  - AiAgent:
+                      Model: claude
+                      PromptFile: "{prompt}"
+        """, filenames=["file.txt"])
+        try:
+            with patch.object(_mod, "_AI_AGENT_AVAILABLE", False):
+                matched, _, dest, err, results = apply_rule_by_yaml_config(folder, "file.txt")
+            assert matched is True
+            assert err is not None
+            assert results[0]["status"] == "error"
+            assert "unavailable" in results[0]["error"].lower()
+        finally:
+            shutil.rmtree(folder)
+
+    def test_ai_agent_missing_prompt_file_is_skipped(self, tmp_path):
+        """AiAgent with no PromptFile is skipped (continue) — not a fatal error."""
+        target = tmp_path / "out"
+        folder = self._make_folder(f"""
+            Rules:
+              - Title: "no prompt"
+                Criteria:
+                  - FileExtension: txt
+                Actions:
+                  - AiAgent:
+                      Model: claude
+                  - MoveToFolder: "{target}"
+        """, filenames=["file.txt"])
+        try:
+            matched, _, dest, err, results = apply_rule_by_yaml_config(folder, "file.txt")
+            assert matched is True
+            assert results[0]["status"] == "skipped"
+            # MoveToFolder still runs after the skipped AiAgent
+            assert results[1]["action"] == "MoveToFolder"
         finally:
             shutil.rmtree(folder)

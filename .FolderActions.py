@@ -9,7 +9,9 @@ import yaml
 # ------------------------------------------------------------------
 # Logging setup
 # ------------------------------------------------------------------
-LOG_FILE = os.path.expanduser("~/Desktop/FolderActions.log")
+LOG_FILE = os.path.expanduser(
+    os.environ.get("FOLDER_ACTIONS_LOG_FILE", "~/Desktop/FolderActions.log")
+)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -42,6 +44,13 @@ try:
 except ImportError:
     _AI_AVAILABLE = False
     logging.warning("AIProvider not found — AI rules disabled")
+
+try:
+    import AIAgentAction
+    _AI_AGENT_AVAILABLE = True
+except ImportError:
+    _AI_AGENT_AVAILABLE = False
+    logging.warning("AIAgentAction not found — AiAgent actions disabled")
 
 # ------------------------------------------------------------------
 # Known top-level YAML keys (for typo suggestions)
@@ -98,7 +107,7 @@ def item_added_to_folder(folder, item):
     # ------------------------------------------------------------------
     # Stage 1: YAML rules
     # ------------------------------------------------------------------
-    matched, rule_title, destination, action_error = apply_rule_by_yaml_config(
+    matched, rule_title, destination, action_error, action_results = apply_rule_by_yaml_config(
         folder, item, config
     )
 
@@ -118,10 +127,11 @@ def item_added_to_folder(folder, item):
                 "event": "added",
                 "stage": "yaml",
                 "rule": rule_title,
-                "action": "move" if destination else "run_script",
+                "action": "rule_actions",
                 "destination": destination,
                 "status": status,
                 "error": action_error,
+                "action_results": action_results,
             })
         return
 
@@ -245,8 +255,14 @@ def apply_rule_by_yaml_config(folder: str, item: str, config=None):
     """
     Evaluate YAML rules against item.
 
-    Returns 4-tuple:
-        (matched: bool, rule_title: str|None, destination: str|None, action_error: str|None)
+    Returns 5-tuple:
+        (
+            matched: bool,
+            rule_title: str|None,
+            destination: str|None,
+            action_error: str|None,
+            action_results: list[dict],
+        )
 
     action_error is set when a rule matched but the action (move/script) failed.
     """
@@ -254,14 +270,14 @@ def apply_rule_by_yaml_config(folder: str, item: str, config=None):
 
     if not os.path.isfile(item_path) and not os.path.isdir(item_path):
         log(f"File not found: {item_path}")
-        return (False, None, None, None)
+        return (False, None, None, None, [])
 
     if config is None:
         config_path = os.path.join(folder, ".FolderActions.yaml")
         config = _load_yaml_config(config_path)
 
     if not config:
-        return (False, None, None, None)
+        return (False, None, None, None, [])
 
     item_nfc = unicodedata.normalize("NFC", item)
 
@@ -277,49 +293,131 @@ def apply_rule_by_yaml_config(folder: str, item: str, config=None):
             continue
 
         # Rule matched — execute actions
-        action_succeeded = False
+        current_path = item_path
         action_error = None
         last_destination = None
+        action_results = []
 
         for action in actions:
             if "MoveToFolder" in action:
                 target_folder = os.path.expanduser(action["MoveToFolder"])
-                last_destination = target_folder
                 try:
                     if not os.path.isdir(target_folder):
                         log(f"Target folder not found: {target_folder}. Creating folder.")
                         os.makedirs(target_folder, exist_ok=True)
-                    target_path = os.path.join(target_folder, item)
-                    shutil.move(item_path, target_path)
-                    action_succeeded = True
+                    current_name = os.path.basename(current_path)
+                    target_path = os.path.join(target_folder, current_name)
+                    shutil.move(current_path, target_path)
+                    current_path = target_path
                     last_destination = target_path
-                    log(f"Moved {item_path} to {target_path}")
+                    log(f"Moved {current_name} to {target_path}")
+                    action_results.append({
+                        "action": "MoveToFolder",
+                        "status": "success",
+                        "destination": target_path,
+                    })
                 except OSError as e:
                     action_error = str(e)
                     logging.error(f"Move failed: {e}")
+                    action_results.append({
+                        "action": "MoveToFolder",
+                        "status": "error",
+                        "error": str(e),
+                    })
+                    break
 
             elif "RunShellScript" in action:
                 script = action["RunShellScript"]
                 try:
                     env = os.environ.copy()
-                    env["FILENAME"] = item_path
-                    result = subprocess.run(
+                    env["FILENAME"] = current_path
+                    subprocess.run(
                         script, shell=True, check=True,
-                        capture_output=True, env=env, cwd=folder,
+                        capture_output=True, env=env, cwd=os.path.dirname(current_path),
                     )
-                    action_succeeded = True
-                    log(f"Executed: {script} with FILENAME={item_path}")
+                    log(f"Executed: {script} with FILENAME={current_path}")
+                    action_results.append({
+                        "action": "RunShellScript",
+                        "status": "success",
+                        "path": current_path,
+                    })
                 except subprocess.CalledProcessError as e:
                     action_error = str(e)
                     logging.error(
                         f"Shell command failed: {script}: {e}\n"
-                        f"stdout: {e.stdout.decode()}\nstderr: {e.stderr.decode()}"
+                        f"stdout: {e.stdout.decode(errors='replace')}\nstderr: {e.stderr.decode(errors='replace')}"
                     )
+                    action_results.append({
+                        "action": "RunShellScript",
+                        "status": "error",
+                        "error": str(e),
+                        "path": current_path,
+                    })
+                    break
 
-        return (True, rule_title, last_destination, action_error)
+            elif "AiAgent" in action:
+                cfg = action["AiAgent"] or {}
+                model = cfg.get("Model", "claude")
+                prompt_file = cfg.get("PromptFile", "")
+                default_timeout = 120
+                if _AI_AGENT_AVAILABLE:
+                    default_timeout = AIAgentAction.DEFAULT_TIMEOUT_SECONDS
+                timeout = max(1, int(cfg.get("TimeoutSeconds", default_timeout)))
+
+                if not _AI_AGENT_AVAILABLE:
+                    error = "AiAgent action unavailable: AIAgentAction module not installed"
+                    action_error = error
+                    logging.error(error)
+                    action_results.append({
+                        "action": "AiAgent",
+                        "status": "error",
+                        "error": error,
+                        "model": model,
+                        "path": current_path,
+                    })
+                    break
+
+                if not prompt_file:
+                    logging.warning("AiAgent action missing PromptFile — skipping")
+                    action_results.append({
+                        "action": "AiAgent",
+                        "status": "skipped",
+                        "error": "PromptFile missing",
+                        "model": model,
+                        "path": current_path,
+                    })
+                    continue
+
+                dangerous_permissions = cfg.get("AllowDangerousPermissions") is True
+                success, output = AIAgentAction.run_ai_agent(
+                    model, prompt_file, current_path, timeout, dangerous_permissions
+                )
+                if success:
+                    logging.info(f"AiAgent ({model}): completed")
+                    action_results.append({
+                        "action": "AiAgent",
+                        "status": "success",
+                        "model": model,
+                        "path": current_path,
+                    })
+                else:
+                    action_error = output
+                    logging.error(f"AiAgent ({model}) failed: {output}")
+                    action_results.append({
+                        "action": "AiAgent",
+                        "status": "error",
+                        "error": output,
+                        "model": model,
+                        "path": current_path,
+                    })
+                    break
+
+        if last_destination is None:
+            last_destination = current_path if current_path != item_path else None
+        return (True, rule_title, last_destination, action_error, action_results)
 
     log(f"No matching rule for {item} in {folder}")
-    return (False, None, None, None)
+    return (False, None, None, None, [])
 
 
 def match_criteria(item: str, criterion: dict) -> bool:
