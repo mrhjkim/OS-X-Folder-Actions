@@ -2,6 +2,8 @@ OS-X-Folder-Actions
 ===================
 Found these here: http://j4zzcat.wordpress.com/2010/01/06/folder-actions-unix-style.
 
+[한국어](README.ko.md)
+
 ## Folder Actions, UNIX style
 
 Mac OS X has a nice feature called Folder Actions. Basically, this feature lets you attach an AppleScript script to a folder, and have that script run whenever items are added or removed from the folder. Have a look here for a simple example.
