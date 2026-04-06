@@ -379,7 +379,7 @@ function renderViewMode(rule) {
     </div>
     <div style="display:flex;gap:10px;align-items:center">
       <span style="color:#666;font-size:10px;text-transform:uppercase;width:60px">대상</span>
-      <span style="color:#888;font-family:monospace;font-size:11px">${rule.dest}</span>
+      <span style="color:#888;font-family:monospace;font-size:11px">${escapeHtml(rule.dest)}</span>
     </div>
     <div style="margin-top:4px">
       <button class="btn-sm" onclick="startEdit('${rule.id}')">✎ 편집</button>
