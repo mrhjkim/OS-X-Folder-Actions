@@ -390,13 +390,13 @@ function renderViewMode(rule) {
 function renderEditForm(rule, isNew=false) {
   const critRows = (crits) => crits.map((c,i)=>`
     <div class="crit-row" id="crit-row-${i}">
-      <select onchange="updateCritType(${JSON.stringify(rule.id)},${i},this.value)">
+      <select onchange="updateCritType('${rule.id}',${i},this.value)">
         <option value="ext" ${c.type==='ext'?'selected':''}>확장자</option>
         <option value="name" ${c.type==='name'?'selected':''}>파일명 포함</option>
       </select>
       <input type="text" value="${escapeHtml(c.value)}" placeholder="${c.type==='ext'?'예: xlsx':'예: 주간업무'}"
-        oninput="updateCritValue(${JSON.stringify(rule.id)},${i},this.value)">
-      <button class="btn-rem" onclick="removeCrit(${JSON.stringify(rule.id)},${i})">✕</button>
+        oninput="updateCritValue('${rule.id}',${i},this.value)">
+      <button class="btn-rem" onclick="removeCrit('${rule.id}',${i})">✕</button>
     </div>`).join('');
 
   const groupsHtml = rule.mode==='groups' ? `
@@ -405,26 +405,26 @@ function renderEditForm(rule, isNew=false) {
         <div class="group-box">
           <div class="group-hdr">
             <span>그룹 ${gi+1} (AND)</span>
-            <button class="btn-sm" style="font-size:10px;padding:2px 8px" onclick="removeGroup(${JSON.stringify(rule.id)},${gi})">삭제</button>
+            <button class="btn-sm" style="font-size:10px;padding:2px 8px" onclick="removeGroup('${rule.id}',${gi})">삭제</button>
           </div>
           <div class="criteria-list">
             ${g.map((c,ci)=>`
               <div class="crit-row">
-                <select onchange="updateGroupCritType(${JSON.stringify(rule.id)},${gi},${ci},this.value)">
+                <select onchange="updateGroupCritType('${rule.id}',${gi},${ci},this.value)">
                   <option value="ext" ${c.type==='ext'?'selected':''}>확장자</option>
                   <option value="name" ${c.type==='name'?'selected':''}>파일명 포함</option>
                 </select>
                 <input type="text" value="${escapeHtml(c.value)}" placeholder="${c.type==='ext'?'예: xlsx':'예: 주간업무'}"
-                  oninput="updateGroupCritValue(${JSON.stringify(rule.id)},${gi},${ci},this.value)">
-                <button class="btn-rem" onclick="removeGroupCrit(${JSON.stringify(rule.id)},${gi},${ci})">✕</button>
+                  oninput="updateGroupCritValue('${rule.id}',${gi},${ci},this.value)">
+                <button class="btn-rem" onclick="removeGroupCrit('${rule.id}',${gi},${ci})">✕</button>
               </div>`).join('')}
-            <button class="btn-sm" style="margin-top:4px" onclick="addGroupCrit(${JSON.stringify(rule.id)},${gi})">+ 조건 추가</button>
+            <button class="btn-sm" style="margin-top:4px" onclick="addGroupCrit('${rule.id}',${gi})">+ 조건 추가</button>
           </div>
         </div>`).join('')}
-      <button class="btn-sm" onclick="addGroup(${JSON.stringify(rule.id)})">+ 그룹 추가</button>
+      <button class="btn-sm" onclick="addGroup('${rule.id}')">+ 그룹 추가</button>
     </div>` : `
     <div class="criteria-list">${critRows(rule.criteria)}</div>
-    <button class="btn-sm" style="margin-top:6px" onclick="addCrit(${JSON.stringify(rule.id)})">+ 조건 추가</button>`;
+    <button class="btn-sm" style="margin-top:6px" onclick="addCrit('${rule.id}')">+ 조건 추가</button>`;
 
   return `
     <div class="form-group">
