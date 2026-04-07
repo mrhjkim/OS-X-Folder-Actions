@@ -23,7 +23,7 @@ There are four main components:
 
 4. **folder-actions log / dashboard** — two ways to review what happened:
    - `folder-actions log` — CLI to query the JSONL audit log (`--file`, `--rule`, `--since`, `--watch`)
-   - `folder-actions dashboard` — interactive web dashboard: browse logs, spot unmatched files, edit rules, and save changes back to `.FolderActions.yaml` in one click
+   - `folder-actions dashboard` — interactive web dashboard: browse logs, spot unmatched files, edit rules, save changes back to `.FolderActions.yaml`, and retroactively apply rules to files already in the watched folder
 
 All you have to do is write a `.FolderActions.yaml` config file and place it in the folder you want to watch.
 
@@ -88,7 +88,7 @@ folder-actions dashboard        # opens http://localhost:7373 in your browser
 folder-actions dashboard --port 8080
 ```
 
-The dashboard reads your live audit log, shows which files matched (or didn't), lets you edit rules directly, and saves changes back to `.FolderActions.yaml` with one click.
+The dashboard reads your live audit log, shows which files matched (or didn't), lets you edit rules directly, and saves changes back to `.FolderActions.yaml` with one click. It also supports **retroactive apply** — if you create a new rule or change an existing one, expand the rule card and click "Preview" to see which files haven't been processed yet, then "Run" to apply the rule to them.
 
 ## AiAgent actions
 
