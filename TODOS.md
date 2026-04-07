@@ -52,4 +52,3 @@ the run executes, eliminating the need for the file count cap.
 - Design doc: `~/.gstack/projects/mrhjkim-OS-X-Folder-Actions/mrhjkim-master-design-20260407-171712.md`
 - Only matters when a watched folder has >50 files matching a rule
 
-**Depends on / blocked by:** The basic retroactive apply feature (this PR) must ship first.
