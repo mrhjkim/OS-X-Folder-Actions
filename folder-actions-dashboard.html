@@ -135,6 +135,29 @@ input[type=text]:focus,select:focus{outline:none;border-color:#444}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:#3a3a3a}
+
+/* Retroactive Apply */
+.retro-section{margin-top:10px;padding-top:10px;border-top:1px solid #222}
+.retro-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.retro-status-label{font-size:10px;color:#666;margin-left:4px}
+.btn-retro-preview{padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;border:1px solid #2a2a2a;background:#1a1a1a;color:#888;transition:all .15s;white-space:nowrap}
+.btn-retro-preview:hover{border-color:#444;color:#ddd}
+.btn-retro-run{padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;border:1px solid #1a3a2a;background:#1a2a1a;color:#4caf50;transition:all .15s;white-space:nowrap}
+.btn-retro-run:hover:not(:disabled){background:#2a4a2a;border-color:#2a5a2a}
+.btn-retro-run:disabled{opacity:0.4;cursor:default}
+.retro-progress{margin-top:8px;font-size:10px;color:#666}
+.retro-table-wrap{margin-top:8px;border:1px solid #222;border-radius:4px;overflow:hidden}
+.retro-table{width:100%;border-collapse:collapse;font-size:11px}
+.retro-table th{background:#111;color:#555;text-align:left;padding:5px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #222}
+.retro-table td{padding:5px 8px;border-bottom:1px solid #1a1a1a;color:#aaa}
+.retro-table tr:last-child td{border-bottom:none}
+.retro-table tr:hover td{background:#1a1a1a}
+.retro-badge{display:inline-block;border-radius:3px;padding:1px 6px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.badge-unprocessed{background:#2a1a00;color:#d4a017;border:1px solid #4a3000}
+.badge-processed{background:#1a2a1a;color:#4caf50;border:1px solid #2a4a2a}
+.badge-skipped{background:#1a1a1a;color:#555;border:1px solid #2a2a2a}
+.badge-run{background:#102040;color:#64b5f6;border:1px solid #1a3a60}
+.badge-error{background:#2a1a1a;color:#ef5350;border:1px solid #4a2a2a}
 </style>
 </head>
 <body>
@@ -240,6 +263,7 @@ let editingRuleId = null;
 let addingRule = false;
 let promptTab = 'prompt';
 let ruleIdCounter = rules.length;
+const _retroRunning = {};  // ruleId -> true during active run (re-entry guard)
 
 // ─── LOG RENDERING ───────────────────────────────────────────────────────────
 function filteredLog() {
@@ -368,6 +392,7 @@ function renderRules() {
 function renderViewMode(rule) {
   const summary = critSummary(rule);
   const modeLabel = {simple:'단순',and:'AND 조건',or:'OR 조건',groups:'그룹 조건'}[rule.mode]||rule.mode;
+  const ruleIdx = parseInt(rule.id.slice(1));
   return `<div style="font-size:12px;display:flex;flex-direction:column;gap:6px">
     <div style="display:flex;gap:10px;align-items:center">
       <span style="color:#666;font-size:10px;text-transform:uppercase;width:60px">방식</span>
@@ -383,6 +408,18 @@ function renderViewMode(rule) {
     </div>
     <div style="margin-top:4px">
       <button class="btn-sm" onclick="startEdit('${rule.id}')">✎ 편집</button>
+    </div>
+    <div class="retro-section" data-rule-id="${rule.id}">
+      <div class="retro-actions">
+        <button class="btn-retro-preview" onclick="previewRetroactive(${currentSourceIndex},${ruleIdx},'${rule.id}')">기존 파일 미리보기</button>
+        <button class="btn-retro-run retro-run-btn" data-rule-id="${rule.id}" onclick="runRetroactive(${currentSourceIndex},${ruleIdx},'${rule.id}')">미처리 파일 실행</button>
+      </div>
+      <div class="retro-table-wrap" id="retro-wrap-${rule.id}" style="display:none">
+        <table class="retro-table" id="retro-table-${rule.id}">
+          <thead><tr><th>파일명</th><th>상태</th><th>마지막 처리</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </div>`;
 }
@@ -839,6 +876,90 @@ async function saveToFile() {
     alert('저장 실패: ' + e.message);
     if (btn) { btn.textContent = '💾 저장'; btn.disabled = false; }
   }
+}
+
+// ─── RETROACTIVE APPLY ────────────────────────────────────────────────────────
+async function previewRetroactive(sourceIdx, ruleIdx, ruleId) {
+  const wrap = document.getElementById('retro-wrap-' + ruleId);
+  const tbody = document.querySelector('#retro-table-' + ruleId + ' tbody');
+  if (!wrap || !tbody) return;
+  tbody.innerHTML = '<tr><td colspan="3" style="color:#888;text-align:center">로딩 중...</td></tr>';
+  wrap.style.display = '';
+  try {
+    const res = await fetch('/api/retroactive', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source_index: sourceIdx, rule_index: ruleIdx, action: 'preview'}),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      tbody.innerHTML = `<tr><td colspan="3" style="color:#f66;text-align:center">${escapeHtml(data.error||'오류')}</td></tr>`;
+      return;
+    }
+    renderRetroactiveTable(ruleId, data.files);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="3" style="color:#f66;text-align:center">${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function runRetroactive(sourceIdx, ruleIdx, ruleId) {
+  if (_retroRunning[ruleId]) return;
+  _retroRunning[ruleId] = true;
+  setRetroRunBtnDisabled(ruleId, true);
+  const wrap = document.getElementById('retro-wrap-' + ruleId);
+  const tbody = document.querySelector('#retro-table-' + ruleId + ' tbody');
+  if (wrap) wrap.style.display = '';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="3" style="color:#888;text-align:center">실행 중...</td></tr>';
+  try {
+    const res = await fetch('/api/retroactive', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source_index: sourceIdx, rule_index: ruleIdx, action: 'run'}),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="3" style="color:#f66;text-align:center">${escapeHtml(data.error||'오류')}</td></tr>`;
+      return;
+    }
+    renderRetroactiveTable(ruleId, data.files);
+  } catch (e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="3" style="color:#f66;text-align:center">${escapeHtml(e.message)}</td></tr>`;
+  } finally {
+    _retroRunning[ruleId] = false;
+    setRetroRunBtnDisabled(ruleId, false);
+  }
+}
+
+function setRetroRunBtnDisabled(ruleId, disabled) {
+  const btn = document.querySelector(`.retro-run-btn[data-rule-id="${ruleId}"]`);
+  if (btn) btn.disabled = disabled;
+}
+
+function renderRetroactiveTable(ruleId, files) {
+  const tbody = document.querySelector('#retro-table-' + ruleId + ' tbody');
+  if (!tbody) return;
+  if (!files || files.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" style="color:#888;text-align:center">조건에 맞는 파일이 없습니다</td></tr>';
+    return;
+  }
+  const badgeLabel = {
+    unprocessed: '미처리',
+    processed: '처리됨',
+    skipped: '건너뜀',
+    run: '실행됨',
+    error: '오류',
+  };
+  const validStatuses = new Set(['unprocessed', 'processed', 'skipped', 'run', 'error']);
+  tbody.innerHTML = files.map(f => {
+    const statusCls = validStatuses.has(f.status) ? f.status : 'error';
+    const badge = `<span class="retro-badge badge-${statusCls}">${badgeLabel[f.status]||escapeHtml(f.status)}</span>`;
+    const ts = f.last_processed ? f.last_processed.replace('T',' ').slice(0,19) : '';
+    return `<tr>
+      <td style="font-family:monospace;font-size:11px">${escapeHtml(f.name)}</td>
+      <td>${badge}</td>
+      <td style="font-size:11px;color:#888">${escapeHtml(ts)}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
