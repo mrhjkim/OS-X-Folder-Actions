@@ -138,16 +138,17 @@ def get_processed_files(folder_path: str, rule_title: str) -> dict:
     return processed
 
 
-def scan_folder_for_rule(folder_path: str, rule_criteria: list) -> list:
+def scan_folder_for_rule(folder_path: str, rule_criteria: list, *, _fa_mod=None) -> list:
     """
     Return absolute paths of files in folder_path that match rule_criteria.
     Uses match_criteria() from .FolderActions.py — criteria-only, no side effects.
-    Passes os.path.basename() to match_criteria (not the full path).
+    Passes entry.name to match_criteria (filename-only, never a full path).
+    Pass _fa_mod to reuse an already-loaded module and avoid double exec_module().
     """
     if not os.path.isdir(folder_path):
         return []
 
-    fa_mod = _load_folder_actions_module()
+    fa_mod = _fa_mod if _fa_mod is not None else _load_folder_actions_module()
     if fa_mod is None or not hasattr(fa_mod, "match_criteria"):
         return []
 
@@ -156,8 +157,7 @@ def scan_folder_for_rule(folder_path: str, rule_criteria: list) -> list:
     try:
         for entry in os.scandir(folder_path):
             if entry.is_file():
-                filename = os.path.basename(entry.path)  # MUST be filename-only
-                if all(match_criteria(filename, c) for c in rule_criteria):
+                if all(match_criteria(entry.name, c) for c in rule_criteria):
                     matched.append(entry.path)
     except OSError:
         return []
@@ -526,7 +526,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             # Reconstruct raw YAML criteria list for scan_folder_for_rule
             raw_criteria = _build_criteria_yaml(rule)
 
-            matching_files = scan_folder_for_rule(folder_path, raw_criteria)
+            # Load module once for the whole request (avoids double exec_module on run)
+            fa_mod = _load_folder_actions_module()
+            matching_files = scan_folder_for_rule(folder_path, raw_criteria, _fa_mod=fa_mod)
 
             # File count limits to prevent blocking the single-threaded server
             max_files = MAX_RETROACTIVE_RUN_FILES if action == "run" else MAX_RETROACTIVE_PREVIEW_FILES
@@ -557,7 +559,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "last_processed": last_processed,
                     })
             else:  # run
-                fa_mod = _load_folder_actions_module()
                 apply_rule = getattr(fa_mod, "apply_rule_by_yaml_config", None) if fa_mod else None
 
                 for filepath in sorted(matching_files):
@@ -586,8 +587,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             }
                         ]})
                         result_files.append({"name": filename, "status": "run", "last_processed": ""})
-                    except Exception as e:
-                        result_files.append({"name": filename, "status": "error", "last_processed": str(e)})
+                    except Exception:
+                        result_files.append({"name": filename, "status": "error", "last_processed": ""})
 
             unprocessed_count = sum(1 for f in result_files if f["status"] == "unprocessed")
             self._send_json({

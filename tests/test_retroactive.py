@@ -378,6 +378,62 @@ class TestHandleRetroactive:
 
         assert handler._responses[0][0] == 400
 
+    # error path: apply_rule raises an exception → status "error"
+    def test_run_apply_rule_exception_gives_error_status(self, tmp_path):
+        folder = str(tmp_path)
+        f = str(tmp_path / "bad.pdf")
+        open(f, "w").close()
+
+        sources = [{"folder": folder, "rules": [
+            {"id": "r0", "title": "R", "mode": "simple", "criteria": [], "groups": [], "dest": "", "actions": [], "modified": False, "isNew": False}
+        ], "yamlPath": os.path.join(folder, ".FolderActions.yaml")}]
+
+        def explode(*args, **kwargs):
+            raise RuntimeError("disk full")
+
+        handler = _make_request({"source_index": 0, "rule_index": 0, "action": "run"})
+        mock_fa = MagicMock()
+        mock_fa.apply_rule_by_yaml_config = explode
+
+        with patch("FolderActionsDashboard.load_logs", return_value=[]), \
+             patch("FolderActionsDashboard.find_sources", return_value=sources), \
+             patch("FolderActionsDashboard.scan_folder_for_rule", return_value=[f]), \
+             patch("FolderActionsDashboard.get_processed_files", return_value={}), \
+             patch("FolderActionsDashboard._load_folder_actions_module", return_value=mock_fa):
+            handler._handle_retroactive()
+
+        status, data = handler._responses[0]
+        assert status == 200
+        assert data["files"][0]["status"] == "error"
+        # exception message must NOT be leaked in the response
+        assert data["files"][0]["last_processed"] == ""
+
+    # error path: fa_mod missing apply_rule_by_yaml_config → apply_rule is None → status "error"
+    def test_run_missing_apply_rule_gives_error_status(self, tmp_path):
+        folder = str(tmp_path)
+        f = str(tmp_path / "file.pdf")
+        open(f, "w").close()
+
+        sources = [{"folder": folder, "rules": [
+            {"id": "r0", "title": "R", "mode": "simple", "criteria": [], "groups": [], "dest": "", "actions": [], "modified": False, "isNew": False}
+        ], "yamlPath": os.path.join(folder, ".FolderActions.yaml")}]
+
+        # fa_mod loaded but lacks apply_rule_by_yaml_config
+        mock_fa = MagicMock(spec=[])  # spec=[] → no attributes → getattr returns None via hasattr
+
+        handler = _make_request({"source_index": 0, "rule_index": 0, "action": "run"})
+
+        with patch("FolderActionsDashboard.load_logs", return_value=[]), \
+             patch("FolderActionsDashboard.find_sources", return_value=sources), \
+             patch("FolderActionsDashboard.scan_folder_for_rule", return_value=[f]), \
+             patch("FolderActionsDashboard.get_processed_files", return_value={}), \
+             patch("FolderActionsDashboard._load_folder_actions_module", return_value=mock_fa):
+            handler._handle_retroactive()
+
+        status, data = handler._responses[0]
+        assert status == 200
+        assert data["files"][0]["status"] == "error"
+
     # 12. file count limit: run with > 50 matching files → 400
     def test_run_too_many_files(self, tmp_path):
         folder = str(tmp_path)
