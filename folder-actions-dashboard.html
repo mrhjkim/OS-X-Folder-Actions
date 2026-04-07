@@ -291,7 +291,7 @@ function renderLog() {
       e.status===null?'<span class="status-none">—</span>':
       '<span class="status-err">✗</span>';
     const sel = selectedEntry===e?'selected':'';
-    return `<tr class="log-row ${sel}" onclick="selectEntry(${JSON.stringify(JSON.stringify(e))})">
+    return `<tr class="log-row ${sel}" onclick="selectEntry(decodeURIComponent('${encodeURIComponent(JSON.stringify(e))}'))">
       <td class="cell-ts">${ts}</td>
       <td class="cell-file" title="${escapeHtml(e.file)}">${escapeHtml(e.file)}</td>
       <td><span class="badge ${badgeClass}">${badgeText}</span></td>
@@ -321,9 +321,10 @@ function setFilter(f, btn) {
 }
 
 function selectEntry(jsonStr) {
-  const e = JSON.parse(jsonStr);
-  // Compare by stable key (object identity fails after JSON round-trip)
-  if (selectedEntry && selectedEntry.ts === e.ts && selectedEntry.file === e.file) {
+  const parsed = JSON.parse(jsonStr);
+  // Resolve to the actual object in logEntries so === identity works in renderLog
+  const e = logEntries.find(l => l.ts === parsed.ts && (l.file || l.item) === (parsed.file || parsed.item)) || parsed;
+  if (selectedEntry === e) {
     clearSelection(); return;
   }
   selectedEntry = e;
@@ -410,8 +411,8 @@ function renderViewMode(rule) {
     </div>
     <div class="retro-section" data-rule-id="${rule.id}">
       <div class="retro-actions">
-        <button class="btn-retro-preview" onclick="previewRetroactive(${currentSourceIndex},${ruleIdx},'${rule.id}',${JSON.stringify(folderPath)})">기존 파일 미리보기</button>
-        <button class="btn-retro-run retro-run-btn" data-rule-id="${rule.id}" onclick="runRetroactive(${currentSourceIndex},${ruleIdx},'${rule.id}',${JSON.stringify(folderPath)})">미처리 파일 실행</button>
+        <button class="btn-retro-preview" onclick="previewRetroactive(${currentSourceIndex},${ruleIdx},'${rule.id}','${folderPath}')">기존 파일 미리보기</button>
+        <button class="btn-retro-run retro-run-btn" data-rule-id="${rule.id}" onclick="runRetroactive(${currentSourceIndex},${ruleIdx},'${rule.id}','${folderPath}')">미처리 파일 실행</button>
       </div>
       <div class="retro-table-wrap" id="retro-wrap-${rule.id}" style="display:none">
         <table class="retro-table" id="retro-table-${rule.id}">
