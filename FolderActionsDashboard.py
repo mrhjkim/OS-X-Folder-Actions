@@ -35,8 +35,15 @@ MAX_RETROACTIVE_RUN_FILES = 50
 
 # ─── LAZY IMPORTS ─────────────────────────────────────────────────────────────
 
+_FA_MODULE_CACHE = None  # cached after first successful load
+
+
 def _load_folder_actions_module():
-    """Load .FolderActions.py via importlib (leading-dot filename prevents normal import)."""
+    """Load .FolderActions.py via importlib (leading-dot filename prevents normal import).
+    Cached at module level to avoid repeated exec_module() calls and file handle leaks."""
+    global _FA_MODULE_CACHE
+    if _FA_MODULE_CACHE is not None:
+        return _FA_MODULE_CACHE
     import importlib.util
     fa_path = os.path.join(SCRIPT_DIR, ".FolderActions.py")
     if not os.path.isfile(fa_path):
@@ -47,6 +54,7 @@ def _load_folder_actions_module():
     if SCRIPT_DIR not in sys.path:
         sys.path.insert(0, SCRIPT_DIR)
     spec.loader.exec_module(mod)
+    _FA_MODULE_CACHE = mod
     return mod
 
 
@@ -129,7 +137,8 @@ def get_processed_files(folder_path: str, rule_title: str) -> dict:
                 except json.JSONDecodeError:
                     continue  # skip malformed lines — do NOT crash
                 if entry.get("rule") == rule_title and entry.get("status") in ("success", "intent"):
-                    filename = os.path.basename(entry.get("item", ""))
+                    # .FolderActions.py writes "file"; older entries may use "item"
+                    filename = os.path.basename(entry.get("file") or entry.get("item", ""))
                     ts = entry.get("ts", "")
                     if filename:
                         processed[filename] = ts  # last-write wins
@@ -499,6 +508,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             source_index = req.get("source_index")
             rule_index = req.get("rule_index")
             action = req.get("action", "")
+            # folder_path from client lets us validate the positional index is stable
+            client_folder = req.get("folder_path", "")
 
             if action not in ("preview", "run"):
                 self._send_json({"error": "action must be 'preview' or 'run'"}, 400)
@@ -508,14 +519,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
             logs = load_logs()
             sources = find_sources(logs)
 
-            if not isinstance(source_index, int) or not (0 <= source_index < len(sources)):
+            if not isinstance(source_index, int) or isinstance(source_index, bool) or not (0 <= source_index < len(sources)):
                 self._send_json({"error": "source_index out of range"}, 400)
                 return
 
             source = sources[source_index]
+
+            # Validate the positional index points to the expected folder (guard against
+            # concurrent source list shifts between render and run)
+            if client_folder and os.path.abspath(client_folder) != os.path.abspath(source["folder"]):
+                self._send_json({"error": "source_index no longer matches folder — refresh the page"}, 409)
+                return
+
             rules = source.get("rules", [])
 
-            if not isinstance(rule_index, int) or not (0 <= rule_index < len(rules)):
+            if not isinstance(rule_index, int) or isinstance(rule_index, bool) or not (0 <= rule_index < len(rules)):
                 self._send_json({"error": "rule_index out of range"}, 400)
                 return
 

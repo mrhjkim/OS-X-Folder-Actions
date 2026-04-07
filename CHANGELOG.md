@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.0.0] - 2026-04-07 (updated)
+
+### Fixed (post-review)
+
+- Audit log idempotency: `.FolderActions.py` writes the `"file"` key but
+  `get_processed_files()` was reading `"item"` — every file appeared unprocessed,
+  defeating the guard against re-running already-processed files. Now reads both keys.
+- Source-index stability: retroactive POST now includes `folder_path`; server validates
+  it matches the resolved source so concurrent log activity can't shift the index.
+- CSS injection guard: `ruleId` validated as `/^r\d+$/` before DOM querySelector use.
+- XSS: `modeLabel` and `critSummary()` output now HTML-escaped in `renderViewMode`.
+- `bool` isinstance bypass: `True`/`False` no longer pass the `int` type check on
+  `source_index` / `rule_index`.
+- Module cache: `_load_folder_actions_module()` now caches after first load, preventing
+  repeated `exec_module()` calls and file-handle leaks on high-frequency requests.
+
+---
+
 ## [0.1.0.0] - 2026-04-07
 
 ### Added

@@ -110,6 +110,24 @@ class TestGetProcessedFiles:
         result = get_processed_files(folder, "R")
         assert "doc.pdf" in result
 
+    # regression: .FolderActions.py writes "file" key, not "item"
+    def test_file_key_recognized(self, tmp_path):
+        folder = str(tmp_path / "watched")
+        os.makedirs(folder)
+        from AuditLogger import AuditLogger
+        log_path = AuditLogger(folder).log_path
+
+        _write_log(log_path, [
+            # "file" key — as written by .FolderActions.py
+            {"rule": "R", "status": "success", "file": f"{folder}/doc.pdf", "ts": "2026-01-01T00:00:00"},
+            # "item" key — legacy format
+            {"rule": "R", "status": "success", "item": f"{folder}/old.pdf", "ts": "2026-01-01T00:00:00"},
+        ])
+
+        result = get_processed_files(folder, "R")
+        assert "doc.pdf" in result, "must recognize 'file' key written by .FolderActions.py"
+        assert "old.pdf" in result, "must still recognize legacy 'item' key"
+
     def test_error_status_excluded(self, tmp_path):
         folder = str(tmp_path / "watched")
         os.makedirs(folder)
@@ -247,6 +265,11 @@ class TestHandleRetroactive:
         responses = self._call({"source_index": 99, "rule_index": 0, "action": "preview"}, sources=[])
         assert responses[0][0] == 400
 
+    # bool subclass of int: True should not be treated as source_index=1
+    def test_bool_source_index_rejected(self):
+        responses = self._call({"source_index": True, "rule_index": 0, "action": "preview"}, sources=[])
+        assert responses[0][0] == 400
+
     # 3. preview returns correct processed/unprocessed split
     def test_preview_returns_correct_status(self, tmp_path):
         folder = str(tmp_path)
@@ -273,6 +296,7 @@ class TestHandleRetroactive:
         by_name = {f["name"]: f["status"] for f in data["files"]}
         assert by_name["processed.pdf"] == "processed"
         assert by_name["new.pdf"] == "unprocessed"
+        assert data["unprocessed"] == 1  # aggregate count must match
 
     # 4. run skips files already in audit log
     def test_run_skips_processed_files(self, tmp_path):
@@ -357,6 +381,53 @@ class TestHandleRetroactive:
 
         status, data = handler._responses[0]
         assert data["files"][0]["status"] == "run"
+
+    # missing action key → 400 (same as invalid action)
+    def test_missing_action_key(self):
+        responses = self._call({"source_index": 0, "rule_index": 0})  # no "action" key
+        assert responses[0][0] == 400
+
+    # boundary: exactly 100 files for preview → 200 (not 400)
+    def test_preview_exactly_at_limit(self, tmp_path):
+        folder = str(tmp_path)
+        exactly = [str(tmp_path / f"f{i}.pdf") for i in range(MAX_RETROACTIVE_PREVIEW_FILES)]
+
+        sources = [{"folder": folder, "rules": [
+            {"id": "r0", "title": "R", "mode": "simple", "criteria": [], "groups": [], "dest": "", "actions": [], "modified": False, "isNew": False}
+        ], "yamlPath": os.path.join(folder, ".FolderActions.yaml")}]
+
+        handler = _make_request({"source_index": 0, "rule_index": 0, "action": "preview"})
+
+        with patch("FolderActionsDashboard.load_logs", return_value=[]), \
+             patch("FolderActionsDashboard.find_sources", return_value=sources), \
+             patch("FolderActionsDashboard.scan_folder_for_rule", return_value=exactly), \
+             patch("FolderActionsDashboard.get_processed_files", return_value={}), \
+             patch("FolderActionsDashboard._load_folder_actions_module", return_value=None):
+            handler._handle_retroactive()
+
+        assert handler._responses[0][0] == 200
+
+    # boundary: exactly 50 files for run → 200 (not 400)
+    def test_run_exactly_at_limit(self, tmp_path):
+        folder = str(tmp_path)
+        exactly = [str(tmp_path / f"f{i}.pdf") for i in range(MAX_RETROACTIVE_RUN_FILES)]
+
+        sources = [{"folder": folder, "rules": [
+            {"id": "r0", "title": "R", "mode": "simple", "criteria": [], "groups": [], "dest": "", "actions": [], "modified": False, "isNew": False}
+        ], "yamlPath": os.path.join(folder, ".FolderActions.yaml")}]
+
+        handler = _make_request({"source_index": 0, "rule_index": 0, "action": "run"})
+        mock_fa = MagicMock()
+        mock_fa.apply_rule_by_yaml_config = MagicMock()
+
+        with patch("FolderActionsDashboard.load_logs", return_value=[]), \
+             patch("FolderActionsDashboard.find_sources", return_value=sources), \
+             patch("FolderActionsDashboard.scan_folder_for_rule", return_value=exactly), \
+             patch("FolderActionsDashboard.get_processed_files", return_value={"f{}.pdf".format(i): "ts" for i in range(MAX_RETROACTIVE_RUN_FILES)}), \
+             patch("FolderActionsDashboard._load_folder_actions_module", return_value=mock_fa):
+            handler._handle_retroactive()
+
+        assert handler._responses[0][0] == 200
 
     # 11. file count limit: preview with > 100 matching files → 400
     def test_preview_too_many_files(self, tmp_path):

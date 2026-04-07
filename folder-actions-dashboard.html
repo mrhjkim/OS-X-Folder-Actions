@@ -391,14 +391,15 @@ function renderViewMode(rule) {
   const summary = critSummary(rule);
   const modeLabel = {simple:'단순',and:'AND 조건',or:'OR 조건',groups:'그룹 조건'}[rule.mode]||rule.mode;
   const ruleIdx = parseInt(rule.id.slice(1));
+  const folderPath = (sources[currentSourceIndex] || {}).folder || '';
   return `<div style="font-size:12px;display:flex;flex-direction:column;gap:6px">
     <div style="display:flex;gap:10px;align-items:center">
       <span style="color:#666;font-size:10px;text-transform:uppercase;width:60px">방식</span>
-      <span>${modeLabel}</span>
+      <span>${escapeHtml(modeLabel)}</span>
     </div>
     <div style="display:flex;gap:10px;align-items:flex-start">
       <span style="color:#666;font-size:10px;text-transform:uppercase;width:60px">조건</span>
-      <span style="color:#aaa">${summary||'(없음)'}</span>
+      <span style="color:#aaa">${escapeHtml(summary)||'(없음)'}</span>
     </div>
     <div style="display:flex;gap:10px;align-items:center">
       <span style="color:#666;font-size:10px;text-transform:uppercase;width:60px">대상</span>
@@ -409,8 +410,8 @@ function renderViewMode(rule) {
     </div>
     <div class="retro-section" data-rule-id="${rule.id}">
       <div class="retro-actions">
-        <button class="btn-retro-preview" onclick="previewRetroactive(${currentSourceIndex},${ruleIdx},'${rule.id}')">기존 파일 미리보기</button>
-        <button class="btn-retro-run retro-run-btn" data-rule-id="${rule.id}" onclick="runRetroactive(${currentSourceIndex},${ruleIdx},'${rule.id}')">미처리 파일 실행</button>
+        <button class="btn-retro-preview" onclick="previewRetroactive(${currentSourceIndex},${ruleIdx},'${rule.id}',${JSON.stringify(folderPath)})">기존 파일 미리보기</button>
+        <button class="btn-retro-run retro-run-btn" data-rule-id="${rule.id}" onclick="runRetroactive(${currentSourceIndex},${ruleIdx},'${rule.id}',${JSON.stringify(folderPath)})">미처리 파일 실행</button>
       </div>
       <div class="retro-table-wrap" id="retro-wrap-${rule.id}" style="display:none">
         <table class="retro-table" id="retro-table-${rule.id}">
@@ -877,7 +878,8 @@ async function saveToFile() {
 }
 
 // ─── RETROACTIVE APPLY ────────────────────────────────────────────────────────
-async function previewRetroactive(sourceIdx, ruleIdx, ruleId) {
+async function previewRetroactive(sourceIdx, ruleIdx, ruleId, folderPath) {
+  if (!/^r\d+$/.test(ruleId)) return;  // guard: ruleId must be server-generated r{N}
   const wrap = document.getElementById('retro-wrap-' + ruleId);
   const tbody = document.querySelector('#retro-table-' + ruleId + ' tbody');
   if (!wrap || !tbody) return;
@@ -887,7 +889,7 @@ async function previewRetroactive(sourceIdx, ruleIdx, ruleId) {
     const res = await fetch('/api/retroactive', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({source_index: sourceIdx, rule_index: ruleIdx, action: 'preview'}),
+      body: JSON.stringify({source_index: sourceIdx, rule_index: ruleIdx, action: 'preview', folder_path: folderPath||''}),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -900,7 +902,8 @@ async function previewRetroactive(sourceIdx, ruleIdx, ruleId) {
   }
 }
 
-async function runRetroactive(sourceIdx, ruleIdx, ruleId) {
+async function runRetroactive(sourceIdx, ruleIdx, ruleId, folderPath) {
+  if (!/^r\d+$/.test(ruleId)) return;  // guard: ruleId must be server-generated r{N}
   if (_retroRunning[ruleId]) return;
   _retroRunning[ruleId] = true;
   setRetroRunBtnDisabled(ruleId, true);
@@ -912,7 +915,7 @@ async function runRetroactive(sourceIdx, ruleIdx, ruleId) {
     const res = await fetch('/api/retroactive', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({source_index: sourceIdx, rule_index: ruleIdx, action: 'run'}),
+      body: JSON.stringify({source_index: sourceIdx, rule_index: ruleIdx, action: 'run', folder_path: folderPath||''}),
     });
     const data = await res.json();
     if (!res.ok) {
