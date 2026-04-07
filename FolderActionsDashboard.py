@@ -30,6 +30,32 @@ DEFAULT_PORT = 7373
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MAX_LOG_ENTRIES = 2000
 MAX_BODY_BYTES = 1 * 1024 * 1024  # 1 MB
+MAX_RETROACTIVE_PREVIEW_FILES = 100
+MAX_RETROACTIVE_RUN_FILES = 50
+
+# ─── LAZY IMPORTS ─────────────────────────────────────────────────────────────
+
+_FA_MODULE_CACHE = None  # cached after first successful load
+
+
+def _load_folder_actions_module():
+    """Load .FolderActions.py via importlib (leading-dot filename prevents normal import).
+    Cached at module level to avoid repeated exec_module() calls and file handle leaks."""
+    global _FA_MODULE_CACHE
+    if _FA_MODULE_CACHE is not None:
+        return _FA_MODULE_CACHE
+    import importlib.util
+    fa_path = os.path.join(SCRIPT_DIR, ".FolderActions.py")
+    if not os.path.isfile(fa_path):
+        return None
+    spec = importlib.util.spec_from_file_location("FolderActions", fa_path)
+    mod = importlib.util.module_from_spec(spec)
+    # Inject SCRIPT_DIR so sibling modules (AuditLogger, AIProvider) can be imported
+    if SCRIPT_DIR not in sys.path:
+        sys.path.insert(0, SCRIPT_DIR)
+    spec.loader.exec_module(mod)
+    _FA_MODULE_CACHE = mod
+    return mod
 
 
 # ─── DATA LOADING ─────────────────────────────────────────────────────────────
@@ -80,6 +106,71 @@ def find_sources(log_entries):
                 "aiRules": ai_rules,
             })
     return sources
+
+
+# ─── RETROACTIVE APPLY HELPERS ────────────────────────────────────────────────
+
+def get_processed_files(folder_path: str, rule_title: str) -> dict:
+    """
+    Return {filename: last_processed_iso} for files processed by rule_title in folder.
+    Delegates log path to AuditLogger to avoid duplicating the naming formula.
+    Skips malformed JSON lines silently.
+    """
+    try:
+        from AuditLogger import AuditLogger
+        log_path = AuditLogger(folder_path).log_path
+    except Exception:
+        return {}
+
+    if not os.path.isfile(log_path):
+        return {}
+
+    processed = {}
+    try:
+        with open(log_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue  # skip malformed lines — do NOT crash
+                if entry.get("rule") == rule_title and entry.get("status") in ("success", "intent"):
+                    # .FolderActions.py writes "file"; older entries may use "item"
+                    filename = os.path.basename(entry.get("file") or entry.get("item", ""))
+                    ts = entry.get("ts", "")
+                    if filename:
+                        processed[filename] = ts  # last-write wins
+    except OSError:
+        return {}
+    return processed
+
+
+def scan_folder_for_rule(folder_path: str, rule_criteria: list, *, _fa_mod=None) -> list:
+    """
+    Return absolute paths of files in folder_path that match rule_criteria.
+    Uses match_criteria() from .FolderActions.py — criteria-only, no side effects.
+    Passes entry.name to match_criteria (filename-only, never a full path).
+    Pass _fa_mod to reuse an already-loaded module and avoid double exec_module().
+    """
+    if not os.path.isdir(folder_path):
+        return []
+
+    fa_mod = _fa_mod if _fa_mod is not None else _load_folder_actions_module()
+    if fa_mod is None or not hasattr(fa_mod, "match_criteria"):
+        return []
+
+    match_criteria = fa_mod.match_criteria
+    matched = []
+    try:
+        for entry in os.scandir(folder_path):
+            if entry.is_file():
+                if all(match_criteria(entry.name, c) for c in rule_criteria):
+                    matched.append(entry.path)
+    except OSError:
+        return []
+    return matched
 
 
 # ─── YAML PARSING ─────────────────────────────────────────────────────────────
@@ -304,8 +395,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "not found"}, 404)
 
     def do_POST(self):
-        if urlparse(self.path).path == "/api/save":
+        path = urlparse(self.path).path
+        if path == "/api/save":
             self._handle_save()
+        elif path == "/api/retroactive":
+            self._handle_retroactive()
         else:
             self._send_json({"error": "not found"}, 404)
 
@@ -387,6 +481,140 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 raise
 
             self._send_json({"ok": True, "path": yaml_path})
+        except (json.JSONDecodeError, ValueError):
+            self._send_json({"error": "Invalid request body"}, 400)
+        except Exception:
+            self._send_json({"error": "Internal server error"}, 500)
+
+    def _handle_retroactive(self):
+        """
+        POST /api/retroactive
+        Body: {"source_index": N, "rule_index": M, "action": "preview"|"run"}
+
+        preview: scan folder, check audit log, return file status list (no mutations).
+        run:     same as preview but execute the rule on unprocessed files.
+
+        File status values: "unprocessed", "processed", "skipped" (file missing on disk).
+        """
+        try:
+            # Body size limit (matches _handle_save)
+            length = int(self.headers.get("Content-Length", 0))
+            if length > MAX_BODY_BYTES:
+                self._send_json({"error": "Request body too large"}, 413)
+                return
+            body = self.rfile.read(length)
+            req = json.loads(body)
+
+            source_index = req.get("source_index")
+            rule_index = req.get("rule_index")
+            action = req.get("action", "")
+            # folder_path from client lets us validate the positional index is stable
+            client_folder = req.get("folder_path", "")
+
+            if action not in ("preview", "run"):
+                self._send_json({"error": "action must be 'preview' or 'run'"}, 400)
+                return
+
+            # Resolve source and rule from live data
+            logs = load_logs()
+            sources = find_sources(logs)
+
+            if not isinstance(source_index, int) or isinstance(source_index, bool) or not (0 <= source_index < len(sources)):
+                self._send_json({"error": "source_index out of range"}, 400)
+                return
+
+            source = sources[source_index]
+
+            # Validate the positional index points to the expected folder (guard against
+            # concurrent source list shifts between render and run)
+            if client_folder and os.path.abspath(client_folder) != os.path.abspath(source["folder"]):
+                self._send_json({"error": "source_index no longer matches folder — refresh the page"}, 409)
+                return
+
+            rules = source.get("rules", [])
+
+            if not isinstance(rule_index, int) or isinstance(rule_index, bool) or not (0 <= rule_index < len(rules)):
+                self._send_json({"error": "rule_index out of range"}, 400)
+                return
+
+            rule = rules[rule_index]
+            folder_path = source["folder"]
+            rule_title = rule["title"]
+
+            # Reconstruct raw YAML criteria list for scan_folder_for_rule
+            raw_criteria = _build_criteria_yaml(rule)
+
+            # Load module once for the whole request (avoids double exec_module on run)
+            fa_mod = _load_folder_actions_module()
+            matching_files = scan_folder_for_rule(folder_path, raw_criteria, _fa_mod=fa_mod)
+
+            # File count limits to prevent blocking the single-threaded server
+            max_files = MAX_RETROACTIVE_RUN_FILES if action == "run" else MAX_RETROACTIVE_PREVIEW_FILES
+            if len(matching_files) > max_files:
+                self._send_json({
+                    "error": f"Too many files ({len(matching_files)}), max {max_files} for action '{action}'"
+                }, 400)
+                return
+
+            processed = get_processed_files(folder_path, rule_title)
+
+            result_files = []
+            if action == "preview":
+                for filepath in sorted(matching_files):
+                    filename = os.path.basename(filepath)
+                    if not os.path.exists(filepath):
+                        status = "skipped"
+                        last_processed = ""
+                    elif filename in processed:
+                        status = "processed"
+                        last_processed = processed[filename]
+                    else:
+                        status = "unprocessed"
+                        last_processed = ""
+                    result_files.append({
+                        "name": filename,
+                        "status": status,
+                        "last_processed": last_processed,
+                    })
+            else:  # run
+                apply_rule = getattr(fa_mod, "apply_rule_by_yaml_config", None) if fa_mod else None
+
+                for filepath in sorted(matching_files):
+                    filename = os.path.basename(filepath)
+                    if not os.path.exists(filepath):
+                        result_files.append({"name": filename, "status": "skipped", "last_processed": ""})
+                        continue
+                    if filename in processed:
+                        result_files.append({
+                            "name": filename,
+                            "status": "processed",
+                            "last_processed": processed[filename],
+                        })
+                        continue
+                    if apply_rule is None:
+                        result_files.append({"name": filename, "status": "error", "last_processed": ""})
+                        continue
+
+                    # Execute rule on this file (item must be filename-only)
+                    try:
+                        apply_rule(folder_path, filename, config={"Rules": [
+                            {
+                                "Title": rule_title,
+                                "Criteria": raw_criteria,
+                                "Actions": rule.get("actions", []),
+                            }
+                        ]})
+                        result_files.append({"name": filename, "status": "run", "last_processed": ""})
+                    except Exception:
+                        result_files.append({"name": filename, "status": "error", "last_processed": ""})
+
+            unprocessed_count = sum(1 for f in result_files if f["status"] == "unprocessed")
+            self._send_json({
+                "files": result_files,
+                "total": len(result_files),
+                "unprocessed": unprocessed_count,
+            })
+
         except (json.JSONDecodeError, ValueError):
             self._send_json({"error": "Invalid request body"}, 400)
         except Exception:
