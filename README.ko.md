@@ -54,11 +54,12 @@ Rules:
     Actions:
       - MoveToFolder: ~/Documents/Reports/
 
-# 선택 사항: AI 규칙 (Ollama 필요 — https://ollama.ai)
+# 선택 사항: AI 규칙 — YAML 규칙이 안 맞을 때 내용으로 분류.
+# 기본 백엔드는 로컬 Ollama(https://ollama.ai) — 파일이 맥을 벗어나지 않음.
 AiRules:
   Model: llama3.2
   ConfidenceThreshold: 0.8
-  TimeoutSeconds: 60      # 선택 사항, 기본값 60초 — 대형 모델 사용 시 늘릴 것
+  TimeoutSeconds: 60      # 선택 사항, 기본값 60초(Ollama) / 20초(gemini)
   Rules:
     - Title: "세금 문서"
       Description: "세금 영수증, 청구서 또는 재무 기록"
@@ -68,6 +69,43 @@ AiRules:
 # 감사 로그는 기본적으로 활성화 (~/.folder-actions-log/)
 # 비활성화: Audit: {Enabled: false}
 ```
+
+### AI 백엔드: Ollama(로컬) 또는 Gemini(API 키)
+
+`AiRules`는 파일 내용으로 분류합니다. 기본 백엔드는 **Ollama**로 로컬에서 돌아
+파일 내용이 맥을 벗어나지 않습니다. 대신 구글 **Gemini** API를 쓰려면 `Provider`를
+추가하고 키 파일을 가리키게 합니다:
+
+```yaml
+AiRules:
+  Provider: gemini                                   # 생략 시 ollama (로컬, 기본값)
+  Model: gemini-3.5-flash                            # 최신 모델 ID는 ai.google.dev 확인
+  ApiKeyFile: ~/.config/folder-actions/gemini.key
+  ConfidenceThreshold: 0.8
+  Rules:
+    - Title: "청구서"
+      Description: "인보이스, 영수증, 결제 내역"
+      Actions:
+        - MoveToFolder: ~/Documents/Invoices/
+```
+
+키는 저장소 밖 파일에 두며, git이 추적하는 `.FolderActions.yaml`에는 절대 넣지
+않습니다:
+
+```bash
+mkdir -p ~/.config/folder-actions
+printf '%s' 'YOUR_GEMINI_API_KEY' > ~/.config/folder-actions/gemini.key
+chmod 600 ~/.config/folder-actions/gemini.key
+```
+
+키 조회 순서: `GEMINI_API_KEY` 환경변수 우선(터미널에서 편리), 그다음 `ApiKeyFile`.
+macOS Folder Actions는 환경이 거의 없는 GUI 데몬으로 실행되므로 **실제 파일 드롭에서
+동작하게 만드는 건 키 파일**입니다. 환경변수만 두면 모든 테스트는 통과하지만 정작
+파일을 떨어뜨릴 때 조용히 실패합니다.
+
+> ⚠️ **`Provider: gemini`는 파일 내용을 맥 밖으로 보냅니다.** 분류되는 모든 파일
+> (PDF, docx, xlsx, txt)의 본문 앞 4096자가 구글 API로 전송됩니다. 감시 폴더에는 보통
+> 청구서·계약서·급여명세서가 들어옵니다. 민감한 폴더라면 로컬 Ollama 백엔드를 쓰세요.
 
 3. `~/Downloads`에 파일을 놓으면 자동으로 이동됩니다.
 

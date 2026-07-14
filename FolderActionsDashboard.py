@@ -213,7 +213,11 @@ def parse_yaml_file(yaml_path):
     ai_cfg = config.get("AiRules")
     if isinstance(ai_cfg, dict) and ai_cfg.get("Model"):
         ai_rules = {
+            "provider": ai_cfg.get("Provider", "ollama"),
             "model": ai_cfg.get("Model", "llama3.2"),
+            # Path only — never the key contents. The dashboard shows where the key
+            # lives, never what it is.
+            "apiKeyFile": ai_cfg.get("ApiKeyFile", ""),
             "confidenceThreshold": ai_cfg.get("ConfidenceThreshold", 0.8),
             "timeoutSeconds": ai_cfg.get("TimeoutSeconds", 60),
             "rules": [],
@@ -313,10 +317,17 @@ def rules_to_yaml(rules, ai_rules):
         })
 
     if ai_rules and ai_rules.get("rules"):
-        ai_cfg = {
-            "Model": ai_rules.get("model", "llama3.2"),
-            "ConfidenceThreshold": ai_rules.get("confidenceThreshold", 0.8),
-        }
+        ai_cfg = {}
+        # Provider is emitted only when it differs from the default, keeping existing
+        # ollama configs byte-identical after a round-trip.
+        provider = ai_rules.get("provider", "ollama")
+        if provider and provider != "ollama":
+            ai_cfg["Provider"] = provider
+        ai_cfg["Model"] = ai_rules.get("model", "llama3.2")
+        api_key_file = ai_rules.get("apiKeyFile")
+        if api_key_file:
+            ai_cfg["ApiKeyFile"] = api_key_file
+        ai_cfg["ConfidenceThreshold"] = ai_rules.get("confidenceThreshold", 0.8)
         ts = ai_rules.get("timeoutSeconds", 60)
         if ts != 60:
             ai_cfg["TimeoutSeconds"] = ts
