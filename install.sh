@@ -83,3 +83,7 @@ echo "  3. (Optional) Install Ollama and a model for AI rules: https://ollama.ai
 echo "  4. View your audit log: folder-actions log"
 echo ""
 echo "Note: AI rules add up to 10s processing time per file when Ollama is running."
+echo ""
+echo "For the Gemini API backend (AiRules Provider: gemini), store your key outside the repo:"
+echo "  mkdir -p ~/.config/folder-actions"
+echo "  printf '%s' 'YOUR_GEMINI_API_KEY' > ~/.config/folder-actions/gemini.key && chmod 600 ~/.config/folder-actions/gemini.key"

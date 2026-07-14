@@ -52,3 +52,25 @@ the run executes, eliminating the need for the file count cap.
 - Design doc: `~/.gstack/projects/mrhjkim-OS-X-Folder-Actions/mrhjkim-master-design-20260407-171712.md`
 - Only matters when a watched folder has >50 files matching a rule
 
+
+---
+
+### Gemini rate-limit backoff (multi-file bursts)
+
+**What:** When a burst of files is dropped at once, the Gemini backend can hit the
+free-tier per-minute request cap. Current behavior: one retry honoring `Retry-After`
+(capped 30s), then `_error` and the file is left unclassified.
+
+**Why:** A scanner dumping 20+ documents into a watched folder will exhaust the
+per-minute quota partway through, so the later files silently fall through to Stage 3.
+
+**Possible approaches:**
+- Exponential backoff with more than one retry (bounded, so the daemon doesn't hang)
+- A small client-side token-bucket throttle across consecutive drops
+- Batch classification (one call for N files) once the API supports it well
+
+**Priority:** P3 — only matters on large bursts; single drops are unaffected.
+
+**Context:**
+- Retry logic: `_backend_gemini()` in `AIProvider.py` (429 → `Retry-After`, one retry)
+- Design doc: `~/.gstack/projects/mrhjkim-OS-X-Folder-Actions/mrhjkim-master-design-20260710-153648.md`
