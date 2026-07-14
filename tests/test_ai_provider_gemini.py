@@ -305,11 +305,11 @@ class TestHttp:
 # ------------------------------------------------------------------
 
 class TestTimeout:
-    def test_gemini_default_is_20(self, monkeypatch):
+    def test_gemini_default_is_60(self, monkeypatch):
         monkeypatch.setenv("GEMINI_API_KEY", KEY)
         with patch("requests.post", return_value=_ok("청구서")) as mp:
             AIProvider.query("x", RULES, "m", provider="gemini")
-        assert mp.call_args.kwargs["timeout"] == 20
+        assert mp.call_args.kwargs["timeout"] == 60
 
     def test_ollama_default_is_60(self):
         resp = MagicMock()

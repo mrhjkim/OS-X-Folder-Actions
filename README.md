@@ -61,7 +61,7 @@ Rules:
 AiRules:
   Model: llama3.2
   ConfidenceThreshold: 0.8
-  TimeoutSeconds: 60      # optional, default 60 (Ollama) / 20 (gemini)
+  TimeoutSeconds: 60      # optional, default 60s (both backends)
   Rules:
     - Title: "Tax documents"
       Description: "Tax receipts, invoices, or financial records"

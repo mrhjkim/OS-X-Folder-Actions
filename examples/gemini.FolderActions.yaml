@@ -39,7 +39,7 @@ AiRules:
   Model: gemini-3.5-flash                            # 최신 모델 ID는 ai.google.dev 확인
   ApiKeyFile: ~/.config/folder-actions/gemini.key
   ConfidenceThreshold: 0.8                           # 이 확신도 미만이면 이동하지 않음
-  # TimeoutSeconds 생략 → gemini 20초, ollama 60초. 명시하면 그 값이 우선.
+  TimeoutSeconds: 60                                 # 기본 60초. thinking 모델이 느리면 90~120으로.
   Rules:
     - Title: "청구서"
       Description: "인보이스, 영수증, 결제 내역, 세금계산서"

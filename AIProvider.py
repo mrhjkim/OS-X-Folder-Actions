@@ -15,7 +15,9 @@ GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta"
               "/models/{model}:generateContent")
 
 DEFAULT_TIMEOUT_SECONDS = 60      # Ollama cold start
-GEMINI_DEFAULT_TIMEOUT = 20       # a cloud flash call answers in 1-2s
+GEMINI_DEFAULT_TIMEOUT = 60       # thinking-enabled flash models can take tens of seconds;
+                                  # 20s was too tight against a real file drop. Override
+                                  # per-folder with AiRules.TimeoutSeconds.
 NO_MATCH = "__NO_MATCH__"         # schema sentinel; a rule may not use this title
 
 
