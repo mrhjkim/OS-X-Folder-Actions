@@ -84,7 +84,8 @@ def query(snippet: str, rules: list, model: str, *,
 
     result = _parse_json(raw, strict=name in _STRICT_JSON_BACKENDS)
     if result is None:
-        return _error(f"{name} returned unparseable JSON")
+        # Keep the raw preview so a model spewing prose is diagnosable in the log.
+        return _error(f"{name} returned unparseable JSON — raw: {str(raw)[:200]}")
     if result.get("matched_rule") == NO_MATCH:   # sentinel → the None contract
         result["matched_rule"] = None
     return _validate_and_enrich(result, rules)
@@ -159,7 +160,8 @@ def _backend_gemini(prompt: str, model: str, timeout: int, cfg: dict) -> str:
 
     if resp.status_code == 429:            # a scanner dumping 20 PDFs at once
         try:
-            wait = min(int(resp.headers.get("Retry-After", 5) or 5), 30)
+            # max(0, ...) guards a hostile negative Retry-After — time.sleep(-n) raises.
+            wait = max(0, min(int(resp.headers.get("Retry-After", 5) or 5), 30))
         except (TypeError, ValueError):
             wait = 5
         logging.warning(f"AIProvider: gemini rate limited, retrying once in {wait}s")

@@ -6,9 +6,11 @@
       and never exposes the key contents.
 """
 import importlib.util
+import json
 import os
 import sys
 import tempfile
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -119,6 +121,42 @@ AiRules:
 """)
         assert "AiRules" in cfg
 
+    def test_reserved_title_rule_is_dropped(self, monkeypatch):
+        # Not just warned — the rule is removed so it can't shadow the sentinel.
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        cfg = _load("""
+AiRules:
+  Model: gemini-3.5-flash
+  Provider: gemini
+  Rules:
+    - Title: "__NO_MATCH__"
+      Actions:
+        - MoveToFolder: ~/x/
+    - Title: "청구서"
+      Actions:
+        - MoveToFolder: ~/Invoices/
+""")
+        titles = [r.get("Title") for r in cfg["AiRules"]["Rules"]]
+        assert titles == ["청구서"]
+
+    def test_untitled_rule_is_dropped(self, monkeypatch):
+        # A rule with no Title would crash prompt building — drop it at load time.
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        cfg = _load("""
+AiRules:
+  Model: gemini-3.5-flash
+  Provider: gemini
+  Rules:
+    - Description: "no title"
+      Actions:
+        - MoveToFolder: ~/x/
+    - Title: "청구서"
+      Actions:
+        - MoveToFolder: ~/Invoices/
+""")
+        titles = [r.get("Title") for r in cfg["AiRules"]["Rules"]]
+        assert titles == ["청구서"]
+
 
 # ------------------------------------------------------------------
 # Dashboard round-trip — the field-drop guard
@@ -198,3 +236,43 @@ AiRules:
             assert "AIza" not in rules_to_yaml(rules, ai_rules)
         finally:
             os.unlink(path)
+
+
+# ------------------------------------------------------------------
+# End-to-end: item_added_to_folder threads Provider/ApiKeyFile into query()
+# ------------------------------------------------------------------
+
+class TestEndToEndThreading:
+    def test_gemini_config_routes_a_dropped_file(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        work = tmp_path / "watched"
+        work.mkdir()
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        (work / "doc.txt").write_text("invoice, total due, payment terms", encoding="utf-8")
+        (work / ".FolderActions.yaml").write_text(f"""
+Rules: []
+AiRules:
+  Provider: gemini
+  Model: gemini-3.5-flash
+  Rules:
+    - Title: "청구서"
+      Description: "invoice, receipt"
+      Actions:
+        - MoveToFolder: {dest}
+Audit: {{Enabled: false}}
+""", encoding="utf-8")
+
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.headers = {}
+        resp.json.return_value = {"candidates": [{"content": {"parts": [{"text":
+            json.dumps({"matched_rule": "청구서", "confidence": 0.95, "reason": "r"})}]}}]}
+
+        with patch("requests.post", return_value=resp) as mp:
+            _fa.item_added_to_folder(str(work), "doc.txt")
+
+        # Routed by content, and the request actually went to Gemini (provider threaded through).
+        assert (dest / "doc.txt").exists()
+        assert not (work / "doc.txt").exists()
+        assert mp.call_args.args[0].startswith("https://generativelanguage.googleapis.com/")

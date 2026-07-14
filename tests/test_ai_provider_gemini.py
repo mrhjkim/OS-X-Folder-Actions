@@ -113,6 +113,11 @@ class TestDispatch:
         assert r["error"] is not None
         assert "did you mean 'gemini'" in r["error"]
 
+    def test_unknown_provider_no_hint(self):                            # gap: empty-suffix branch
+        r = AIProvider.query("x", RULES, "m", provider="zzzzzz")
+        assert r["error"] is not None
+        assert "did you mean" not in r["error"]
+
     def test_requests_missing(self, monkeypatch):                       # test 20
         monkeypatch.setattr(AIProvider, "requests", None)
         r = AIProvider.query("x", RULES, "m", provider="gemini")
@@ -234,6 +239,7 @@ class TestSchema:
             r = AIProvider.query("x", RULES, "m", provider="gemini")
         assert r["error"] is not None
         assert "unparseable JSON" in r["error"]
+        assert "raw:" in r["error"]          # raw preview kept for diagnosability
 
 
 # ------------------------------------------------------------------
@@ -281,6 +287,35 @@ class TestHttp:
         with patch("requests.post", side_effect=seq):
             AIProvider.query("x", RULES, "m", provider="gemini")
         assert _no_sleep == [30]
+
+    def test_negative_retry_after_clamped_no_crash(self, monkeypatch, _no_sleep):
+        # A hostile negative Retry-After must not reach time.sleep(-n) (raises ValueError).
+        monkeypatch.setenv("GEMINI_API_KEY", KEY)
+        seq = [_http_error(429, "slow", headers={"Retry-After": "-5"}), _ok("청구서")]
+        with patch("requests.post", side_effect=seq) as mp:
+            r = AIProvider.query("x", RULES, "m", provider="gemini")
+        assert _no_sleep == [0]          # clamped to 0, retry still happened
+        assert mp.call_count == 2
+        assert r["matched_rule"] == "청구서"
+
+    def test_malformed_retry_after_defaults_to_5(self, monkeypatch, _no_sleep):
+        monkeypatch.setenv("GEMINI_API_KEY", KEY)
+        seq = [_http_error(429, "slow", headers={"Retry-After": "soon"}), _ok("청구서")]
+        with patch("requests.post", side_effect=seq):
+            AIProvider.query("x", RULES, "m", provider="gemini")
+        assert _no_sleep == [5]
+
+    def test_response_shape_unexpected(self, monkeypatch):
+        # 200 OK but malformed candidates/parts → _BackendError, not a crash.
+        monkeypatch.setenv("GEMINI_API_KEY", KEY)
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.headers = {}
+        resp.json.return_value = {"candidates": []}
+        with patch("requests.post", return_value=resp):
+            r = AIProvider.query("x", RULES, "m", provider="gemini")
+        assert r["error"] is not None
+        assert "shape unexpected" in r["error"]
 
     def test_junk_model_is_percent_encoded(self, monkeypatch):         # test 19
         monkeypatch.setenv("GEMINI_API_KEY", KEY)

@@ -260,8 +260,11 @@ def _load_yaml_config(config_path: str):
         else:
             provider = str(ai_cfg.get("Provider", "ollama")).strip().lower()
 
-            # A cloud provider needs a key. If none is reachable, skip the AI stage
-            # once at load time rather than erroring per file.
+            # A cloud provider needs a key. If no key SOURCE is configured (neither
+            # env var nor ApiKeyFile path), skip the AI stage once at load time.
+            # This checks configuration, not file readability — an unreadable
+            # ApiKeyFile still degrades to a per-file skip in _resolve_api_key,
+            # never a crash. The two checks are intentionally different.
             if provider == "gemini":
                 has_key = bool(os.environ.get("GEMINI_API_KEY", "").strip()) \
                     or bool(ai_cfg.get("ApiKeyFile"))
@@ -273,19 +276,30 @@ def _load_yaml_config(config_path: str):
                     config.pop("AiRules", None)
                     return config
 
+            # Drop invalid rules rather than only warning: a rule with no Title
+            # crashes prompt building, and a rule titled with the sentinel collides
+            # with the no-match value and could never fire. Both silently break the
+            # user's intent, so remove them and log why.
+            valid_rules = []
             for rule in ai_cfg.get("Rules", []):
                 title = rule.get("Title")
+                if not title:
+                    logging.error("AiRules.Rules entry has no Title — skipping it.")
+                    continue
                 if title == _NO_MATCH_SENTINEL:
                     logging.error(
                         f"AiRules.Rules Title '{_NO_MATCH_SENTINEL}' is reserved — "
-                        "rename this rule; it collides with the no-match sentinel."
+                        "skipping this rule; rename it and reload."
                     )
+                    continue
                 for action in rule.get("Actions", []):
                     if "RunShellScript" in action:
                         logging.error(
                             f"AiRules.Rules['{title}'].Actions contains RunShellScript — "
                             "only MoveToFolder is allowed under AiRules in v1. RunShellScript will be ignored."
                         )
+                valid_rules.append(rule)
+            ai_cfg["Rules"] = valid_rules
 
     return config
 
