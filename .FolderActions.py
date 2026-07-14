@@ -56,6 +56,10 @@ except ImportError:
 # Known top-level YAML keys (for typo suggestions)
 # ------------------------------------------------------------------
 _KNOWN_YAML_KEYS = ["Rules", "AiRules", "Audit"]
+_KNOWN_AIRULES_KEYS = [
+    "Provider", "Model", "ApiKeyFile", "ConfidenceThreshold", "TimeoutSeconds", "Rules"
+]
+_NO_MATCH_SENTINEL = "__NO_MATCH__"   # reserved; a rule may not use this Title
 
 CONFIG_FILE = ".FolderActions.conf"
 
@@ -142,12 +146,19 @@ def item_added_to_folder(folder, item):
     if ai_cfg and _AI_AVAILABLE and _EXTRACTOR_AVAILABLE:
         ai_rules = ai_cfg.get("Rules", [])
         model = ai_cfg.get("Model")
+        provider = ai_cfg.get("Provider", "ollama")
+        api_key_file = ai_cfg.get("ApiKeyFile")
         threshold = float(ai_cfg.get("ConfidenceThreshold", 0.8))
-        ai_timeout = int(ai_cfg.get("TimeoutSeconds", 60))
+        # TimeoutSeconds unset → let AIProvider.query pick the per-provider default
+        # (20s gemini, 60s ollama). An explicit value always wins.
+        ai_timeout = int(ai_cfg["TimeoutSeconds"]) if "TimeoutSeconds" in ai_cfg else None
 
         if ai_rules and model:
             snippet = ContentExtractor.extract(file_path)
-            result = AIProvider.query(snippet, ai_rules, model, timeout=ai_timeout)
+            result = AIProvider.query(
+                snippet, ai_rules, model,
+                provider=provider, api_key_file=api_key_file, timeout=ai_timeout,
+            )
 
             if not result["error"] and result["matched_rule"] and result["confidence"] >= threshold:
                 dest_dir = result["destination"]
@@ -233,20 +244,62 @@ def _load_yaml_config(config_path: str):
             hint = f" — did you mean '{suggestions[0]}'?" if suggestions else ""
             logging.warning(f"Unknown YAML key '{key}'{hint}")
 
-    # Validate AiRules actions (only MoveToFolder allowed)
+    # Validate AiRules
     ai_cfg = config.get("AiRules", {})
     if ai_cfg:
+        # Typo suggestions for unknown AiRules sub-keys (mirrors the top-level check)
+        for key in ai_cfg:
+            if key not in _KNOWN_AIRULES_KEYS:
+                suggestions = difflib.get_close_matches(key, _KNOWN_AIRULES_KEYS, n=1, cutoff=0.6)
+                hint = f" — did you mean '{suggestions[0]}'?" if suggestions else ""
+                logging.warning(f"Unknown AiRules key '{key}'{hint}")
+
         if not ai_cfg.get("Model"):
             logging.error("AiRules.Model is required — skipping AI rules section")
             config.pop("AiRules", None)
         else:
+            provider = str(ai_cfg.get("Provider", "ollama")).strip().lower()
+
+            # A cloud provider needs a key. If no key SOURCE is configured (neither
+            # env var nor ApiKeyFile path), skip the AI stage once at load time.
+            # This checks configuration, not file readability — an unreadable
+            # ApiKeyFile still degrades to a per-file skip in _resolve_api_key,
+            # never a crash. The two checks are intentionally different.
+            if provider == "gemini":
+                has_key = bool(os.environ.get("GEMINI_API_KEY", "").strip()) \
+                    or bool(ai_cfg.get("ApiKeyFile"))
+                if not has_key:
+                    logging.error(
+                        "AiRules.Provider=gemini but neither GEMINI_API_KEY nor "
+                        "AiRules.ApiKeyFile is set — skipping AI rules section"
+                    )
+                    config.pop("AiRules", None)
+                    return config
+
+            # Drop invalid rules rather than only warning: a rule with no Title
+            # crashes prompt building, and a rule titled with the sentinel collides
+            # with the no-match value and could never fire. Both silently break the
+            # user's intent, so remove them and log why.
+            valid_rules = []
             for rule in ai_cfg.get("Rules", []):
+                title = rule.get("Title")
+                if not title:
+                    logging.error("AiRules.Rules entry has no Title — skipping it.")
+                    continue
+                if title == _NO_MATCH_SENTINEL:
+                    logging.error(
+                        f"AiRules.Rules Title '{_NO_MATCH_SENTINEL}' is reserved — "
+                        "skipping this rule; rename it and reload."
+                    )
+                    continue
                 for action in rule.get("Actions", []):
                     if "RunShellScript" in action:
                         logging.error(
-                            f"AiRules.Rules['{rule.get('Title')}'].Actions contains RunShellScript — "
+                            f"AiRules.Rules['{title}'].Actions contains RunShellScript — "
                             "only MoveToFolder is allowed under AiRules in v1. RunShellScript will be ignored."
                         )
+                valid_rules.append(rule)
+            ai_cfg["Rules"] = valid_rules
 
     return config
 

@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0.0] - 2026-07-14
+
+### Added
+
+- **Gemini API backend for AiRules.** `AiRules` can now classify with Google's Gemini
+  API instead of local Ollama. Set `Provider: gemini` and point `ApiKeyFile` at a key
+  file outside the repo. Absent `Provider` keeps the existing Ollama behavior byte for
+  byte — no config changes required.
+- API key resolution: `GEMINI_API_KEY` env var first, then `ApiKeyFile`. The key file
+  path is what makes classification work under the GUI Folder Actions daemon, which has
+  no shell environment.
+- Gemini responses are constrained with a `responseSchema` `enum` of the rule titles
+  plus a `__NO_MATCH__` sentinel, so the model can never invent a rule that doesn't
+  exist. `__NO_MATCH__` is a reserved rule title.
+- `difflib` typo hints now extend to `AiRules` sub-keys (`ApiKeyfile` → `ApiKeyFile?`)
+  and the `Provider` value (`gemni` → `gemini?`).
+- One automatic retry on HTTP 429, honoring `Retry-After` (clamped to 0–30s).
+- `examples/gemini.FolderActions.yaml` — a copy-paste sample config for the Gemini backend.
+- 46 new tests. The Gemini eval (`scripts/eval_gemini_classifier.py`, real API key,
+  excluded from the default `pytest` run) is described in the design doc and left for
+  the maintainer to add before relying on the no-match path in production.
+
+### Changed
+
+- `AIProvider.query()` gained keyword-only `provider`, `api_key_file`, and a
+  per-provider default `timeout` (60s for both backends). Existing callers are
+  unaffected.
+- `AIProvider` internals refactored into a backend registry. Ollama moved into
+  `_backend_ollama` with its empty-response and parse-failure diagnostics preserved.
+- `install.sh` now prints the Gemini key-file setup steps after installing.
+
+### Fixed
+
+- A hostile `Retry-After: -5` no longer reaches `time.sleep(-n)` (which raises and
+  abandons the retry); the wait is clamped to 0.
+- An `AiRules` rule with no `Title`, or one titled `__NO_MATCH__`, is now dropped at
+  load time with a logged reason instead of only warned. The former crashed prompt
+  building; the latter could never fire because it collided with the no-match sentinel.
+
+### Security
+
+- `Provider: gemini` uploads up to 4096 characters of each classified file's contents
+  to Google. Documented in both READMEs; the local Ollama backend remains the default.
+- The API key travels in the `x-goog-api-key` header, never a URL query parameter, so
+  it cannot leak through a request exception that echoes the URL. Group/world-readable
+  key files trigger a `chmod 600` warning.
+
 ## [0.1.0.0] - 2026-04-07
 
 ### Added

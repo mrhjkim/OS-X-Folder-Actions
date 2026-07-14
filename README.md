@@ -56,11 +56,12 @@ Rules:
     Actions:
       - MoveToFolder: ~/Documents/Reports/
 
-# Optional: AI rules (requires Ollama — https://ollama.ai)
+# Optional: AI rules — classify by content when YAML rules don't match.
+# Default backend is local Ollama (https://ollama.ai); nothing leaves your Mac.
 AiRules:
   Model: llama3.2
   ConfidenceThreshold: 0.8
-  TimeoutSeconds: 60      # optional, default 60 — increase for large models
+  TimeoutSeconds: 60      # optional, default 60s (both backends)
   Rules:
     - Title: "Tax documents"
       Description: "Tax receipts, invoices, or financial records"
@@ -70,6 +71,44 @@ AiRules:
 # Audit log is on by default (~/.folder-actions-log/)
 # To disable: Audit: {Enabled: false}
 ```
+
+### AI backends: Ollama (local) or Gemini (API key)
+
+`AiRules` classifies files by content. The default backend is **Ollama**, running
+locally — file contents never leave your Mac. To use Google's **Gemini** API instead,
+add a `Provider` and point at a key file:
+
+```yaml
+AiRules:
+  Provider: gemini                                   # omit → ollama (local, default)
+  Model: gemini-3.5-flash                            # verify current IDs at ai.google.dev
+  ApiKeyFile: ~/.config/folder-actions/gemini.key
+  ConfidenceThreshold: 0.8
+  Rules:
+    - Title: "청구서"
+      Description: "인보이스, 영수증, 결제 내역"
+      Actions:
+        - MoveToFolder: ~/Documents/Invoices/
+```
+
+The key lives in a file outside the repo, never in `.FolderActions.yaml` (which is
+tracked by git):
+
+```bash
+mkdir -p ~/.config/folder-actions
+printf '%s' 'YOUR_GEMINI_API_KEY' > ~/.config/folder-actions/gemini.key
+chmod 600 ~/.config/folder-actions/gemini.key
+```
+
+Key resolution order: the `GEMINI_API_KEY` environment variable first (handy for a
+terminal), then `ApiKeyFile`. macOS Folder Actions runs from a GUI daemon with almost
+no environment, so **the key file is what makes it work on a real file drop** — an env
+var alone will pass every test and then silently fail when you actually drop a file.
+
+> ⚠️ **`Provider: gemini` sends file contents off your machine.** Up to the first 4096
+> characters of every classified file (PDF, docx, xlsx, txt) are uploaded to Google's
+> API. Watched folders usually hold invoices, contracts, and payslips. If that matters
+> for a folder, keep it on the local Ollama backend.
 
 3. Drop a file into `~/Downloads` and watch it move.
 

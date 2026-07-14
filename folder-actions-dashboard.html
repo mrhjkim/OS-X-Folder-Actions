@@ -684,9 +684,12 @@ function generateFullYaml() {
     y += ruleToYaml(r).split('\n').map(l=>l?'  '+l:'').join('\n') + '\n';
   }
   if (aiRules) {
-    y += `# AI 규칙 (Ollama 필요)\n`;
+    const provider = aiRules.provider || 'ollama';
+    y += `# AI 규칙 (${provider === 'gemini' ? 'Gemini API 키 필요' : 'Ollama 필요'})\n`;
     y += `AiRules:\n`;
+    if (provider !== 'ollama') y += `  Provider: ${provider}\n`;
     y += `  Model: ${aiRules.model}\n`;
+    if (aiRules.apiKeyFile) y += `  ApiKeyFile: ${aiRules.apiKeyFile}\n`;
     y += `  ConfidenceThreshold: ${aiRules.confidenceThreshold}\n`;
     y += `  TimeoutSeconds: ${aiRules.timeoutSeconds || 60}\n`;
     y += `  Rules:\n`;
