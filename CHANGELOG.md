@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0.1] - 2026-07-15
+
+### Fixed
+
+- **SemanticRules misclassified every Korean filename under the Folder Actions daemon.**
+  macOS stores filenames decomposed (NFD) — `진행` arrives as separate jamo `ㅈㅣㄴㅎㅐㅇ`,
+  identical on screen but different code points. The multilingual tokenizer split the
+  decomposed form differently, so the daemon embedded a different vector than any shell
+  test produced, and the NFC stopwords never matched the NFD filename. Real symptom:
+  `SKT 지능망 PKG 개발 진행 상황.xls` embedded to 원인보고서 at 0.718 in the daemon while
+  scoring 개발계획 0.546 in every CLI check. `_clean_filename` now folds the filename to
+  NFC before stripping/embedding; utterances and extracted content are folded too, so
+  both sides of the cosine are NFC. Only reproducible under the real GUI daemon, never in
+  a shell — the daemon's stripped environment hands over the raw NFD path.
+
 ## [0.3.0.0] - 2026-07-15
 
 ### Added
