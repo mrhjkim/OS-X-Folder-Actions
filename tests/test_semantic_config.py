@@ -96,6 +96,91 @@ SemanticRules:
 """)
         assert [r["Title"] for r in cfg["SemanticRules"]["Rules"]] == ["청구서"]
 
+    def test_rule_without_destination_dropped(self):
+        # Matches internally but has no MoveToFolder → would fall through anyway. Drop it.
+        cfg = _load("""
+SemanticRules:
+  Model: m
+  Rules:
+    - Title: "목적지없음"
+      Utterances: ["u"]
+    - Title: "청구서"
+      Utterances: ["청구 금액"]
+      Actions: [MoveToFolder: ~/Inv]
+""")
+        assert [r["Title"] for r in cfg["SemanticRules"]["Rules"]] == ["청구서"]
+
+    def test_non_numeric_threshold_does_not_crash(self):
+        cfg = _load("""
+SemanticRules:
+  Model: m
+  SimilarityThreshold: high
+  Rules:
+    - Title: "청구서"
+      Utterances: ["청구 금액"]
+      Actions: [MoveToFolder: ~/Inv]
+""")
+        assert "SemanticRules" in cfg                         # not crashed
+        assert "SimilarityThreshold" not in cfg["SemanticRules"]  # bad value dropped → default
+
+    def test_rules_not_a_list_drops_section_no_crash(self):
+        cfg = _load("SemanticRules:\n  Model: m\n  Rules: notalist\n")
+        assert "SemanticRules" not in cfg                     # dropped, no AttributeError
+
+
+class TestStage2Runtime:
+    """Drive item_added_to_folder with a mocked classify — the move/audit/fallthrough block."""
+
+    def _setup(self, tmp_path, dest):
+        work = tmp_path / "watched"
+        work.mkdir()
+        (work / "f.txt").write_text("x", encoding="utf-8")
+        (work / ".FolderActions.yaml").write_text(f"""
+Rules: []
+SemanticRules:
+  Model: m
+  Rules:
+    - Title: "T"
+      Utterances: ["u"]
+      Actions:
+        - MoveToFolder: {dest}
+Audit: {{Enabled: false}}
+""", encoding="utf-8")
+        return work
+
+    def test_match_moves_file(self, monkeypatch, tmp_path):
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        work = self._setup(tmp_path, dest)
+        monkeypatch.setattr(_fa.SemanticProvider, "classify",
+            lambda *a, **k: {"matched_rule": "T", "confidence": 0.9, "reason": "cos 0.9",
+                             "destination": str(dest), "error": None})
+        _fa.item_added_to_folder(str(work), "f.txt")
+        assert (dest / "f.txt").exists()
+        assert not (work / "f.txt").exists()
+
+    def test_move_failure_falls_through_no_crash(self, monkeypatch, tmp_path):
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        work = self._setup(tmp_path, dest)
+        monkeypatch.setattr(_fa.SemanticProvider, "classify",
+            lambda *a, **k: {"matched_rule": "T", "confidence": 0.9, "reason": "r",
+                             "destination": str(dest), "error": None})
+        monkeypatch.setattr(_fa.shutil, "move",
+            lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+        _fa.item_added_to_folder(str(work), "f.txt")     # must not raise
+        assert (work / "f.txt").exists()                 # not moved; fell through
+
+    def test_below_threshold_falls_through(self, monkeypatch, tmp_path):
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        work = self._setup(tmp_path, dest)
+        monkeypatch.setattr(_fa.SemanticProvider, "classify",
+            lambda *a, **k: {"matched_rule": None, "confidence": 0.3, "reason": "r",
+                             "destination": None, "error": None})
+        _fa.item_added_to_folder(str(work), "f.txt")
+        assert (work / "f.txt").exists()                 # stayed put
+
 
 class TestDashboardRoundTrip:
     def _write(self, text):

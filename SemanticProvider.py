@@ -77,9 +77,9 @@ def classify(content, filename, rules, model_id, *, threshold, default_source="c
             utterances = rule.get("Utterances") or []
             if not utterances:
                 continue
-            source = str(rule.get("EmbedSource", default_source)).strip().lower()
+            source = str(rule.get("EmbedSource") or default_source or "content").strip().lower()
             if source not in _VALID_SOURCES:
-                source = default_source
+                source = "content"
             text = _doc_text(source, content, filename, filename_stopwords)
             if not text.strip():
                 continue                      # nothing to embed for this rule's source

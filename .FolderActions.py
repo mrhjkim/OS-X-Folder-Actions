@@ -376,15 +376,34 @@ def _load_yaml_config(config_path: str):
                 hint = f" — did you mean '{suggestions[0]}'?" if suggestions else ""
                 logging.warning(f"Unknown SemanticRules key '{key}'{hint}")
 
-        if not sem_cfg.get("Model"):
+        # A bad scalar type here would otherwise crash item_added_to_folder later
+        # (float() on a string, iterating a non-list). Coerce/guard at load time so
+        # the "never crash the Folder Action" contract holds.
+        if "SimilarityThreshold" in sem_cfg:
+            try:
+                sem_cfg["SimilarityThreshold"] = float(sem_cfg["SimilarityThreshold"])
+            except (TypeError, ValueError):
+                logging.error(
+                    f"SemanticRules.SimilarityThreshold '{sem_cfg['SimilarityThreshold']}' "
+                    "is not a number — using default 0.8."
+                )
+                del sem_cfg["SimilarityThreshold"]
+        if not isinstance(sem_cfg.get("Rules", []), list):
+            logging.error("SemanticRules.Rules must be a list — skipping semantic rules section")
+            config.pop("SemanticRules", None)
+        elif not sem_cfg.get("Model"):
             logging.error("SemanticRules.Model is required — skipping semantic rules section")
             config.pop("SemanticRules", None)
         else:
-            # A semantic rule needs both a Title and at least one Utterance. Drop the
-            # rest rather than only warning — a rule with no utterances can never match
-            # and a rule with no Title has no destination.
+            # A semantic rule needs a Title, at least one Utterance, and a MoveToFolder
+            # destination. Drop the rest rather than only warning — a rule with no
+            # utterances can never match, and one with no destination would match
+            # internally but still fall through to the paid LLM (defeating the point).
             valid_sem = []
             for rule in sem_cfg.get("Rules", []):
+                if not isinstance(rule, dict):
+                    logging.error("SemanticRules.Rules entry is not a mapping — skipping it.")
+                    continue
                 title = rule.get("Title")
                 if not title:
                     logging.error("SemanticRules.Rules entry has no Title — skipping it.")
@@ -392,6 +411,11 @@ def _load_yaml_config(config_path: str):
                 if not rule.get("Utterances"):
                     logging.error(
                         f"SemanticRules.Rules['{title}'] has no Utterances — skipping it."
+                    )
+                    continue
+                if not any("MoveToFolder" in a for a in rule.get("Actions", [])):
+                    logging.error(
+                        f"SemanticRules.Rules['{title}'] has no MoveToFolder — skipping it."
                     )
                     continue
                 valid_sem.append(rule)
