@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0.0] - 2026-07-15
+
+### Added
+
+- **SemanticRules — free local vector classification.** A new stage that runs before the
+  paid `AiRules`: it embeds a file (its content and/or filename) with a local ONNX model
+  (`fastembed`, no API key, offline after a one-time model download) and moves it to the
+  category whose example phrases are the closest cosine match. Confident matches cost
+  nothing; only ambiguous files fall through to the LLM. Pipeline is now
+  `Rules → SemanticRules → AiRules → fallthrough`.
+- Per-category `Utterances` (example phrases) defined right in `.FolderActions.yaml` — no
+  labels, no training.
+- **`EmbedSource`** field (`content` | `filename` | `both`), settable block-wide and
+  overridable per rule. `content` classifies by topic (invoice vs contract); `filename`
+  classifies by document type/format (weekly report vs design doc), which content
+  embedding cannot separate. Measured on real documents before shipping.
+- `SimilarityThreshold` gate; below it, the file falls through to `AiRules`.
+- **`FilenameStopwords`** — substrings (org names, edit-state words) removed from the
+  filename before embedding. Filenames carry organizational noise on nearly every file
+  that dominates the short filename embedding; stripping it took real-file classification
+  from 4/9 to 8/9. Numbers, dates, and week/period counters are stripped automatically.
+- The embedding model cache is pinned to `~/.cache/folder-actions/fastembed` (fastembed's
+  default is the system temp dir, which can be reaped mid-run).
+- Dashboard reads, renders, and round-trips `SemanticRules`.
+- `examples/semantic.FolderActions.yaml` sample config.
+- 23 new tests (mocked embedder, no download in CI).
+
+### Changed
+
+- `requirements.txt` gains `fastembed`.
+- `FolderActionsDashboard.parse_yaml_file` now returns a 3-tuple
+  `(rules, ai_rules, semantic_rules)` and `rules_to_yaml` gains an optional
+  `semantic_rules` argument.
+
 ## [0.2.0.0] - 2026-07-14
 
 ### Added

@@ -98,12 +98,13 @@ def find_sources(log_entries):
     for folder in seen_folders:
         yaml_path = os.path.join(folder, ".FolderActions.yaml")
         if os.path.isfile(yaml_path):
-            rules, ai_rules = parse_yaml_file(yaml_path)
+            rules, ai_rules, semantic_rules = parse_yaml_file(yaml_path)
             sources.append({
                 "folder": folder,
                 "yamlPath": yaml_path,
                 "rules": rules,
                 "aiRules": ai_rules,
+                "semanticRules": semantic_rules,
             })
     return sources
 
@@ -176,15 +177,15 @@ def scan_folder_for_rule(folder_path: str, rule_criteria: list, *, _fa_mod=None)
 # ─── YAML PARSING ─────────────────────────────────────────────────────────────
 
 def parse_yaml_file(yaml_path):
-    """Parse .FolderActions.yaml → (rules list, aiRules dict or None)."""
+    """Parse .FolderActions.yaml → (rules list, aiRules dict or None, semanticRules dict or None)."""
     try:
         with open(yaml_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
     except Exception:
-        return [], None
+        return [], None, None
 
     if not isinstance(config, dict):
-        return [], None
+        return [], None, None
 
     rules = []
     for i, r in enumerate(config.get("Rules", [])):
@@ -234,7 +235,30 @@ def parse_yaml_file(yaml_path):
                 "dest": ar_dest,
             })
 
-    return rules, ai_rules
+    semantic_rules = None
+    sem_cfg = config.get("SemanticRules")
+    if isinstance(sem_cfg, dict) and sem_cfg.get("Model"):
+        semantic_rules = {
+            "model": sem_cfg.get("Model", ""),
+            "similarityThreshold": sem_cfg.get("SimilarityThreshold", 0.8),
+            "embedSource": sem_cfg.get("EmbedSource", "content"),
+            "filenameStopwords": sem_cfg.get("FilenameStopwords", []),
+            "rules": [],
+        }
+        for sr in sem_cfg.get("Rules", []):
+            sr_dest = ""
+            for a in sr.get("Actions", []):
+                if "MoveToFolder" in a:
+                    sr_dest = a["MoveToFolder"]
+                    break
+            semantic_rules["rules"].append({
+                "title": sr.get("Title", ""),
+                "utterances": sr.get("Utterances", []),
+                "embedSource": sr.get("EmbedSource", ""),   # "" = inherit block default
+                "dest": sr_dest,
+            })
+
+    return rules, ai_rules, semantic_rules
 
 
 def parse_criteria(criteria_list):
@@ -304,8 +328,8 @@ def _normalize_actions(actions):
 
 # ─── YAML GENERATION (SAVE) ───────────────────────────────────────────────────
 
-def rules_to_yaml(rules, ai_rules):
-    """Convert dashboard rules + aiRules back to YAML text."""
+def rules_to_yaml(rules, ai_rules, semantic_rules=None):
+    """Convert dashboard rules + aiRules + semanticRules back to YAML text."""
     config = {"Rules": []}
 
     for r in rules:
@@ -340,6 +364,29 @@ def rules_to_yaml(rules, ai_rules):
             for ar in ai_rules.get("rules", [])
         ]
         config["AiRules"] = ai_cfg
+
+    if semantic_rules and semantic_rules.get("rules"):
+        sem_cfg = {"Model": semantic_rules.get("model", "")}
+        thr = semantic_rules.get("similarityThreshold", 0.8)
+        if thr != 0.8:
+            sem_cfg["SimilarityThreshold"] = thr
+        source = semantic_rules.get("embedSource", "content")
+        if source and source != "content":
+            sem_cfg["EmbedSource"] = source
+        stopwords = semantic_rules.get("filenameStopwords") or []
+        if stopwords:                        # emit only when non-empty (byte-identical round-trip)
+            sem_cfg["FilenameStopwords"] = stopwords
+        sem_cfg["Rules"] = []
+        for sr in semantic_rules.get("rules", []):
+            rule = {
+                "Title": sr["title"],
+                "Utterances": sr.get("utterances", []),
+                "Actions": [{"MoveToFolder": sr["dest"]}],
+            }
+            if sr.get("embedSource"):            # per-rule override only when set
+                rule["EmbedSource"] = sr["embedSource"]
+            sem_cfg["Rules"].append(rule)
+        config["SemanticRules"] = sem_cfg
 
     return yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
@@ -475,7 +522,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Path not in known watched folders"}, 403)
                 return
 
-            content = rules_to_yaml(req.get("rules", []), req.get("aiRules"))
+            content = rules_to_yaml(req.get("rules", []), req.get("aiRules"),
+                                    req.get("semanticRules"))
 
             # Atomic write: write to .tmp then replace (prevents partial-write corruption)
             dir_name = os.path.dirname(real_path)

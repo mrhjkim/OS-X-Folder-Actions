@@ -110,6 +110,80 @@ var alone will pass every test and then silently fail when you actually drop a f
 > API. Watched folders usually hold invoices, contracts, and payslips. If that matters
 > for a folder, keep it on the local Ollama backend.
 
+### SemanticRules: free local classification (no tokens)
+
+`AiRules` costs tokens (or, with Ollama, CPU) on every file. **`SemanticRules`** is a free
+stage that runs *before* `AiRules`: it embeds the document with a local ONNX model
+(`fastembed`, no API key, offline after a one-time model download) and picks the category
+whose example phrases are the closest match. Confident matches move for **$0**; only the
+genuinely ambiguous files fall through to the paid LLM.
+
+```yaml
+SemanticRules:
+  Model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # multilingual, verified in fastembed 0.8.0
+  SimilarityThreshold: 0.5           # below → fall through to AiRules
+  EmbedSource: content               # content | filename | both
+  Rules:
+    - Title: "청구서"
+      Utterances:                    # a few example phrases = the whole "training"
+        - "세금계산서 공급가액 부가세 청구 금액"
+        - "영수증 결제 내역 카드 승인"
+      Actions:
+        - MoveToFolder: ~/Documents/Invoices
+    - Title: "설계문서"
+      EmbedSource: filename          # per-rule override
+      Utterances:
+        - "설계문서 상세 설계 아키텍처"
+      Actions:
+        - MoveToFolder: ~/Documents/Design
+```
+
+Pipeline: `Rules` (filename, free) → `SemanticRules` (vector, free) → `AiRules` (LLM, paid fallback).
+
+**`EmbedSource` — which text to embed** (measured on real docs):
+- `content` (default) classifies by **topic** — great for topic-distinct categories
+  (invoice vs contract vs resume).
+- `filename` classifies by document **type/format**, which lives in the name
+  ("주간업무보고", "설계문서"). Use it for same-topic/different-format categories that
+  content embedding cannot separate.
+- `both` concatenates filename + content (use sparingly — content can dilute the filename signal).
+
+Notes:
+- `Utterances` are short example phrases (3-6 per category), not the whole document. No
+  labels, no training.
+- If a filename always contains an exact keyword ("주간업무"), a plain `Rules`
+  `FileNameContains` rule is simpler, exact, and free — reach for `SemanticRules` when the
+  keyword varies (synonyms/typos).
+- The first classified file downloads the embedding model (~240MB) to
+  `~/.cache/folder-actions/fastembed`. All offline after that.
+- See `examples/semantic.FolderActions.yaml` for a fuller sample.
+
+**`FilenameStopwords` — strip noise before embedding** (filename source). Filenames often
+carry organizational tokens on every file (team names, dept names, "final"/"draft"). Those
+dominate the short filename embedding and drag classification the wrong way. List them under
+`FilenameStopwords` and they are removed before embedding. Measured on real filenames:
+without it 4/9, with the org-name list 8/9.
+
+```yaml
+SemanticRules:
+  EmbedSource: filename
+  FilenameStopwords:            # exact substrings removed from the filename before embedding
+    - R&D Division
+    - Team A
+    - final
+    - draft
+  Rules: [...]
+```
+
+- List the **full org name**, not a bare shared word — a word that also appears in a real
+  category would delete the category's signal.
+- List overlapping stopwords **longest-first**, and write them **space-separated**
+  (separators `_ - .` are normalized to spaces first).
+- Numbers, dates, and week/period counters (`2026`, `0107`, `v2`, Korean `7월1주차`) are
+  stripped **automatically** — no need to list them. (This means an alphanumeric code like
+  `LM12` loses its digits; if a category depends on such a code, use an exact
+  `FileNameContains` rule instead.)
+
 3. Drop a file into `~/Downloads` and watch it move.
 
 4. View the audit log:

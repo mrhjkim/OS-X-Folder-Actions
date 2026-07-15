@@ -252,6 +252,7 @@ function escapeHtml(s) {
 let logEntries = [];
 let rules = [];
 let aiRules = null;
+let semanticRules = null;
 let sources = [];
 let currentSourceIndex = 0;
 let currentFilter = 'all';
@@ -699,6 +700,27 @@ function generateFullYaml() {
       y += `      Actions:\n        - MoveToFolder: ${r.dest}\n`;
     }
   }
+  if (semanticRules) {
+    y += `# 의미 규칙 (무료 로컬 벡터 유사도)\n`;
+    y += `SemanticRules:\n`;
+    y += `  Model: ${semanticRules.model}\n`;
+    y += `  SimilarityThreshold: ${semanticRules.similarityThreshold ?? 0.8}\n`;
+    const src = semanticRules.embedSource || 'content';
+    if (src !== 'content') y += `  EmbedSource: ${src}\n`;
+    const stops = semanticRules.filenameStopwords || [];
+    if (stops.length) {
+      y += `  FilenameStopwords:\n`;
+      for (const w of stops) y += `    - ${w}\n`;
+    }
+    y += `  Rules:\n`;
+    for (const r of (semanticRules.rules || [])) {
+      y += `    - Title: "${r.title}"\n`;
+      if (r.embedSource) y += `      EmbedSource: ${r.embedSource}\n`;
+      y += `      Utterances:\n`;
+      for (const u of (r.utterances || [])) y += `        - "${u}"\n`;
+      y += `      Actions:\n        - MoveToFolder: ${r.dest}\n`;
+    }
+  }
   return y;
 }
 
@@ -820,6 +842,7 @@ function _loadSource(index) {
   const src = sources[index];
   rules = src.rules || [];
   aiRules = src.aiRules || null;
+  semanticRules = src.semanticRules || null;
   ruleIdCounter = rules.length;
   expandedRules = new Set();
   editingRuleId = null;
@@ -861,7 +884,7 @@ async function saveToFile() {
     const resp = await fetch('/api/save', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({yamlPath: src.yamlPath, rules, aiRules}),
+      body: JSON.stringify({yamlPath: src.yamlPath, rules, aiRules, semanticRules}),
     });
     const result = await resp.json();
     if (result.ok) {
