@@ -19,6 +19,7 @@ def extract(file_path: str) -> str:
       .pdf   → pypdf
       .docx  → python-docx
       .xlsx  → openpyxl (sheet 1 only)
+      .xls   → xlrd (old binary format; sheet 1 only)
       .txt .md .csv → stdlib open()
     """
     if os.path.isdir(file_path):
@@ -41,6 +42,8 @@ def extract(file_path: str) -> str:
             return _extract_docx(file_path)
         elif ext == ".xlsx":
             return _extract_xlsx(file_path)
+        elif ext == ".xls":
+            return _extract_xls(file_path)
         elif ext in (".txt", ".md", ".csv", ".log", ".json", ".yaml", ".yml"):
             return _extract_text(file_path)
         else:
@@ -83,6 +86,22 @@ def _extract_xlsx(file_path: str) -> str:
                 parts.append(str(cell))
         joined = " ".join(parts)
         if len(joined) >= MAX_CHARS:
+            break
+    return " ".join(parts)[:MAX_CHARS]
+
+
+def _extract_xls(file_path: str) -> str:
+    # Old binary Excel (.xls). openpyxl only reads .xlsx; xlrd 2.x only reads .xls —
+    # the two cover the format split. Sheet 1 only, to match _extract_xlsx.
+    import xlrd
+    book = xlrd.open_workbook(file_path)
+    sheet = book.sheet_by_index(0)
+    parts = []
+    for r in range(sheet.nrows):
+        for cell in sheet.row_values(r):
+            if cell not in (None, ""):
+                parts.append(str(cell))
+        if len(" ".join(parts)) >= MAX_CHARS:
             break
     return " ".join(parts)[:MAX_CHARS]
 

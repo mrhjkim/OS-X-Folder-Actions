@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0.2] - 2026-07-15
+
+### Added
+
+- **`.xls` content extraction (old binary Excel).** `ContentExtractor` handled only
+  `.xlsx` (openpyxl); legacy `.xls` files fell through to empty text, so `AiRules` had
+  nothing to classify and left them unsorted. Added an `xlrd`-based `.xls` reader
+  (sheet 1, capped at 4096 chars, same shape as the `.xlsx` path). Real symptom:
+  `SKT 지능망 PKG 개발 진행 상황.xls` now extracts "SKT 지능망 개발 계획 …" and `AiRules`
+  files it as 개발계획 instead of leaving it in Downloads.
+- `requirements.txt` gains `xlrd` (2.x reads only `.xls`; openpyxl keeps `.xlsx` — the
+  two split the format cleanly). 4 new tests (mocked xlrd, no binary fixture).
+
 ## [0.3.0.1] - 2026-07-15
 
 ### Fixed

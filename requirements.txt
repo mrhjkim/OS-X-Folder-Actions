@@ -2,6 +2,7 @@ pyyaml
 pypdf
 python-docx
 openpyxl
+xlrd
 requests
 pytest
 fastembed
