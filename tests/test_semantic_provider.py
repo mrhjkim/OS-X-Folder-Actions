@@ -183,6 +183,24 @@ class TestCleanFilename:
         # \d+주차 wins over bare \d+, so no orphan "주차" is left.
         assert SemanticProvider._clean_filename("주간업무보고(7월1주차).xlsx") == "주간업무보고"
 
+    def test_nfd_filename_normalized_to_nfc(self):
+        # macOS delivers filenames decomposed (NFD). Same glyphs, different code points.
+        # The cleaner must fold them to NFC so downstream matches the NFC utterances.
+        import unicodedata
+        nfd = unicodedata.normalize("NFD", "개발 진행 상황.xlsx")
+        assert nfd != "개발 진행 상황"                       # genuinely decomposed
+        out = SemanticProvider._clean_filename(nfd)
+        assert out == "개발 진행 상황"                        # composed back to NFC
+        assert unicodedata.is_normalized("NFC", out)
+
+    def test_nfc_stopword_strips_from_nfd_filename(self):
+        # Stopwords in YAML are NFC; the filename from disk is NFD. Without NFC folding
+        # the substring replace silently fails and the org token pollutes the embedding.
+        import unicodedata
+        nfd = unicodedata.normalize("NFD", "연구개발본부 주간보고.xlsx")
+        out = SemanticProvider._clean_filename(nfd, stopwords=["연구개발본부"])
+        assert out == "주간보고"
+
 
 class TestStopwordsThreadedThroughClassify:
     def test_filename_stopwords_reach_the_embedder(self):

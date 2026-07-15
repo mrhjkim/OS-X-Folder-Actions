@@ -20,6 +20,7 @@ have tuned for it; their distributions differ.
 import logging
 import os
 import re
+import unicodedata
 
 # Built-in filename noise: Korean date/period counters, versions, bare numbers.
 # Bare \d+ is LAST in the alternation so the specific counter forms win at a digit
@@ -119,6 +120,7 @@ def _get_model(model_id):
 def _utterance_matrix(embedder, model_id, utterances):
     """L2-normalized matrix (n_utterances x dim) for a rule, cached per (model, utterances)."""
     import numpy as np
+    utterances = [_nfc(u) for u in utterances]
     key = (model_id, tuple(utterances))
     if key not in _UTTERANCE_CACHE:
         prefixed = [_prefix(model_id, u, "query") for u in utterances]
@@ -129,6 +131,7 @@ def _utterance_matrix(embedder, model_id, utterances):
 
 def _doc_text(source, content, filename, stopwords=None):
     name = _clean_filename(filename, stopwords)
+    content = _nfc(content)                    # PDF/docx text can also arrive decomposed
     if source == "filename":
         return name
     if source == "both":
@@ -136,10 +139,20 @@ def _doc_text(source, content, filename, stopwords=None):
     return content                            # "content" (default)
 
 
+def _nfc(text):
+    """Compose Unicode to NFC. macOS stores filenames as NFD (decomposed jamo), so a
+    Korean filename from the Folder Actions daemon arrives as ㅈㅣㄴㅎㅐㅇ, not 진행 —
+    same on screen, different code points, tokenized differently, embedded differently.
+    Utterances/stopwords in YAML are NFC, so both sides must be NFC to compare."""
+    return unicodedata.normalize("NFC", text or "")
+
+
 def _clean_filename(filename, stopwords=None):
     """Turn the filename into words for embedding, stripping noise.
 
-    Three passes, order matters twice:
+    NFC-normalize FIRST (macOS filenames are NFD) — otherwise both the embedding and the
+    exact stopword substring match silently fail on Korean names. Then three passes,
+    order matters twice:
       1. separators → spaces FIRST, so a space-written multi-word stopword ("전자 직책자")
          matches a filename that used underscores ("전자_직책자").
       2. exact stopword substrings (org names, edit-state words). List overlapping
@@ -147,7 +160,7 @@ def _clean_filename(filename, stopwords=None):
       3. numeric/date noise LAST, so a digit-bearing stopword ("개발1부") is removed by
          exact match before the numeric strip turns it into "개발 부".
     """
-    stem = os.path.splitext(os.path.basename(filename or ""))[0]
+    stem = _nfc(os.path.splitext(os.path.basename(filename or ""))[0])
     stem = re.sub(r"[_()\-.]+", " ", stem)          # 1) separators
     for w in (stopwords or []):                      # 2) exact stopwords
         if w:
