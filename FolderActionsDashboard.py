@@ -242,6 +242,7 @@ def parse_yaml_file(yaml_path):
             "model": sem_cfg.get("Model", ""),
             "similarityThreshold": sem_cfg.get("SimilarityThreshold", 0.8),
             "embedSource": sem_cfg.get("EmbedSource", "content"),
+            "filenameStopwords": sem_cfg.get("FilenameStopwords", []),
             "rules": [],
         }
         for sr in sem_cfg.get("Rules", []):
@@ -372,6 +373,9 @@ def rules_to_yaml(rules, ai_rules, semantic_rules=None):
         source = semantic_rules.get("embedSource", "content")
         if source and source != "content":
             sem_cfg["EmbedSource"] = source
+        stopwords = semantic_rules.get("filenameStopwords") or []
+        if stopwords:                        # emit only when non-empty (byte-identical round-trip)
+            sem_cfg["FilenameStopwords"] = stopwords
         sem_cfg["Rules"] = []
         for sr in semantic_rules.get("rules", []):
             rule = {

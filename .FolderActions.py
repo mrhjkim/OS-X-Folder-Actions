@@ -67,7 +67,7 @@ _KNOWN_AIRULES_KEYS = [
     "Provider", "Model", "ApiKeyFile", "ConfidenceThreshold", "TimeoutSeconds", "Rules"
 ]
 _KNOWN_SEMANTICRULES_KEYS = [
-    "Model", "SimilarityThreshold", "EmbedSource", "Rules"
+    "Model", "SimilarityThreshold", "EmbedSource", "FilenameStopwords", "Rules"
 ]
 _NO_MATCH_SENTINEL = "__NO_MATCH__"   # reserved; a rule may not use this Title
 
@@ -158,12 +158,14 @@ def item_added_to_folder(folder, item):
         sem_model = sem_cfg.get("Model")
         sem_threshold = float(sem_cfg.get("SimilarityThreshold", 0.8))
         sem_source = sem_cfg.get("EmbedSource", "content")
+        sem_stopwords = sem_cfg.get("FilenameStopwords", [])
 
         if sem_rules and sem_model:
             snippet = ContentExtractor.extract(file_path)
             result = SemanticProvider.classify(
                 snippet, item, sem_rules, sem_model,
                 threshold=sem_threshold, default_source=sem_source,
+                filename_stopwords=sem_stopwords,
             )
 
             if not result["error"] and result["matched_rule"] and result["destination"]:

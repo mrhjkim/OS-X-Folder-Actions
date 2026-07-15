@@ -19,6 +19,12 @@ have tuned for it; their distributions differ.
 """
 import logging
 import os
+import re
+
+# Built-in filename noise: Korean date/period counters, versions, bare numbers.
+# Bare \d+ is LAST in the alternation so the specific counter forms win at a digit
+# position (Python re is leftmost-first-alternative). 주차 precedes 주 for the same reason.
+_NOISE_RE = re.compile(r"(\d+주차|\d+주|\d+월|\d+일|\d+년|\d+분기|[vV]\d+|\d+)")
 
 try:
     from fastembed import TextEmbedding
@@ -36,17 +42,20 @@ _UTTERANCE_CACHE = {}      # (model_id, tuple(utterances)) -> L2-normalized matr
 _VALID_SOURCES = ("content", "filename", "both")
 
 
-def classify(content, filename, rules, model_id, *, threshold, default_source="content"):
+def classify(content, filename, rules, model_id, *, threshold, default_source="content",
+             filename_stopwords=None):
     """
     Classify a document against SemanticRules by embedding similarity.
 
     Args:
-        content        : extracted document text (may be "")
-        filename        : the file's basename (used for EmbedSource filename/both)
-        rules           : [{"Title", "Utterances", "Actions", "EmbedSource"?}]
-        model_id        : a fastembed-supported embedding model id
-        threshold       : minimum cosine to count as a match; below → no match
-        default_source  : block-level EmbedSource when a rule doesn't set its own
+        content            : extracted document text (may be "")
+        filename            : the file's basename (used for EmbedSource filename/both)
+        rules               : [{"Title", "Utterances", "Actions", "EmbedSource"?}]
+        model_id            : a fastembed-supported embedding model id
+        threshold           : minimum cosine to count as a match; below → no match
+        default_source      : block-level EmbedSource when a rule doesn't set its own
+        filename_stopwords  : substrings removed from the filename before embedding (org
+                              names, edit-state words); numbers/dates are stripped anyway
 
     Returns a dict with the SAME five keys on every path —
         matched_rule, confidence, reason, destination, error
@@ -71,7 +80,7 @@ def classify(content, filename, rules, model_id, *, threshold, default_source="c
             source = str(rule.get("EmbedSource", default_source)).strip().lower()
             if source not in _VALID_SOURCES:
                 source = default_source
-            text = _doc_text(source, content, filename)
+            text = _doc_text(source, content, filename, filename_stopwords)
             if not text.strip():
                 continue                      # nothing to embed for this rule's source
             if source not in doc_vecs:
@@ -118,8 +127,8 @@ def _utterance_matrix(embedder, model_id, utterances):
     return _UTTERANCE_CACHE[key]
 
 
-def _doc_text(source, content, filename):
-    name = _clean_filename(filename)
+def _doc_text(source, content, filename, stopwords=None):
+    name = _clean_filename(filename, stopwords)
     if source == "filename":
         return name
     if source == "both":
@@ -127,11 +136,24 @@ def _doc_text(source, content, filename):
     return content                            # "content" (default)
 
 
-def _clean_filename(filename):
-    """Strip the extension and turn separators into spaces so the name reads as words."""
-    import re
+def _clean_filename(filename, stopwords=None):
+    """Turn the filename into words for embedding, stripping noise.
+
+    Three passes, order matters twice:
+      1. separators → spaces FIRST, so a space-written multi-word stopword ("전자 직책자")
+         matches a filename that used underscores ("전자_직책자").
+      2. exact stopword substrings (org names, edit-state words). List overlapping
+         stopwords longest-first ("전자 직책자" before "직책자").
+      3. numeric/date noise LAST, so a digit-bearing stopword ("개발1부") is removed by
+         exact match before the numeric strip turns it into "개발 부".
+    """
     stem = os.path.splitext(os.path.basename(filename or ""))[0]
-    return re.sub(r"[_()\-.]+", " ", stem).strip()
+    stem = re.sub(r"[_()\-.]+", " ", stem)          # 1) separators
+    for w in (stopwords or []):                      # 2) exact stopwords
+        if w:
+            stem = stem.replace(w, " ")
+    stem = _NOISE_RE.sub(" ", stem)                  # 3) numeric/date noise
+    return re.sub(r"\s+", " ", stem).strip()
 
 
 def _prefix(model_id, text, kind):

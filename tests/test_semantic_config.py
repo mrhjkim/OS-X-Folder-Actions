@@ -150,6 +150,50 @@ SemanticRules:
         finally:
             os.unlink(path)
 
+    def test_filename_stopwords_round_trip(self):
+        path = self._write("""
+Rules: []
+SemanticRules:
+  Model: m
+  EmbedSource: filename
+  FilenameStopwords:
+    - 연구개발본부
+    - 개발3팀
+    - 전자 직책자
+  Rules:
+    - Title: "주간보고"
+      Utterances: ["주간업무보고"]
+      Actions:
+        - MoveToFolder: ~/Documents/주간업무
+""")
+        try:
+            rules, ai_rules, sem = parse_yaml_file(path)
+            assert sem["filenameStopwords"] == ["연구개발본부", "개발3팀", "전자 직책자"]
+            out = yaml.safe_load(rules_to_yaml(rules, ai_rules, sem))
+            assert out["SemanticRules"]["FilenameStopwords"] == ["연구개발본부", "개발3팀", "전자 직책자"]
+        finally:
+            os.unlink(path)
+
+    def test_empty_stopwords_omitted(self):
+        path = self._write("""
+Rules: []
+SemanticRules:
+  Model: m
+  EmbedSource: filename
+  Rules:
+    - Title: "주간보고"
+      Utterances: ["주간업무보고"]
+      Actions:
+        - MoveToFolder: ~/x
+""")
+        try:
+            rules, ai_rules, sem = parse_yaml_file(path)
+            assert sem["filenameStopwords"] == []
+            out = yaml.safe_load(rules_to_yaml(rules, ai_rules, sem))
+            assert "FilenameStopwords" not in out["SemanticRules"]   # byte-identical round-trip
+        finally:
+            os.unlink(path)
+
     def test_no_semantic_rules_omits_section(self):
         path = self._write("Rules: []\nAiRules:\n  Model: llama3.2\n  Rules:\n"
                            "    - Title: T\n      Description: d\n      Actions: [MoveToFolder: ~/x]\n")

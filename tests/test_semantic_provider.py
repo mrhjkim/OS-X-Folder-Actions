@@ -155,5 +155,41 @@ class TestPrefix:
         assert not any(t.startswith(("query: ", "passage: ")) for t in FakeEmbedding.embedded)
 
 
-def test_clean_filename():
-    assert SemanticProvider._clean_filename("2026_청구서(최종)-v2.pdf") == "2026 청구서 최종 v2"
+class TestCleanFilename:
+    def test_separators_and_builtin_numeric_strip(self):
+        # 2026 (bare \d+) and v2 ([vV]\d+) are stripped by the built-in noise pass.
+        assert SemanticProvider._clean_filename("2026_청구서(최종)-v2.pdf") == "청구서 최종"
+
+    def test_stopwords_removed(self):
+        out = SemanticProvider._clean_filename(
+            "연구개발본부_주간업무보고_개발3팀.xlsx",
+            stopwords=["연구개발본부", "개발3팀"])
+        assert out == "주간업무보고"
+
+    def test_separator_first_lets_space_stopword_match_underscores(self):
+        # "전자 직책자" (space) must match a filename that used underscores.
+        out = SemanticProvider._clean_filename(
+            "월간보고_전자_직책자_개발1부(0107).xlsx",
+            stopwords=["전자 직책자", "개발1부"])
+        assert out == "월간보고"
+
+    def test_stopword_before_numeric_strip(self):
+        # "개발1부" is removed by exact match before \d+ could turn it into "개발 부".
+        out = SemanticProvider._clean_filename("월간보고_개발1부.xlsx", stopwords=["개발1부"])
+        assert out == "월간보고"
+        assert "부" not in out
+
+    def test_week_counter_stripped_as_a_unit(self):
+        # \d+주차 wins over bare \d+, so no orphan "주차" is left.
+        assert SemanticProvider._clean_filename("주간업무보고(7월1주차).xlsx") == "주간업무보고"
+
+
+class TestStopwordsThreadedThroughClassify:
+    def test_filename_stopwords_reach_the_embedder(self):
+        # With the org token stripped, only "청구서" is embedded (fake maps 청구 → invoice).
+        r = SemanticProvider.classify(
+            "", "연구개발본부_청구서_개발3팀.pdf", RULES, "fake-model",
+            threshold=0.9, default_source="filename",
+            filename_stopwords=["연구개발본부", "개발3팀"])
+        assert r["matched_rule"] == "청구서"
+        assert "연구개발본부 청구서 개발3팀" not in FakeEmbedding.embedded  # noise was stripped

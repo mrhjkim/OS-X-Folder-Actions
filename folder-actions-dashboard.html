@@ -707,6 +707,11 @@ function generateFullYaml() {
     y += `  SimilarityThreshold: ${semanticRules.similarityThreshold ?? 0.8}\n`;
     const src = semanticRules.embedSource || 'content';
     if (src !== 'content') y += `  EmbedSource: ${src}\n`;
+    const stops = semanticRules.filenameStopwords || [];
+    if (stops.length) {
+      y += `  FilenameStopwords:\n`;
+      for (const w of stops) y += `    - ${w}\n`;
+    }
     y += `  Rules:\n`;
     for (const r of (semanticRules.rules || [])) {
       y += `    - Title: "${r.title}"\n`;

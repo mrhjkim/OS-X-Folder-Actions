@@ -158,6 +158,32 @@ Notes:
   `~/.cache/folder-actions/fastembed`. All offline after that.
 - See `examples/semantic.FolderActions.yaml` for a fuller sample.
 
+**`FilenameStopwords` — strip noise before embedding** (filename source). Filenames often
+carry organizational tokens on every file (team names, dept names, "final"/"draft"). Those
+dominate the short filename embedding and drag classification the wrong way. List them under
+`FilenameStopwords` and they are removed before embedding. Measured on real filenames:
+without it 4/9, with the org-name list 8/9.
+
+```yaml
+SemanticRules:
+  EmbedSource: filename
+  FilenameStopwords:            # exact substrings removed from the filename before embedding
+    - R&D Division
+    - Team A
+    - final
+    - draft
+  Rules: [...]
+```
+
+- List the **full org name**, not a bare shared word — a word that also appears in a real
+  category would delete the category's signal.
+- List overlapping stopwords **longest-first**, and write them **space-separated**
+  (separators `_ - .` are normalized to spaces first).
+- Numbers, dates, and week/period counters (`2026`, `0107`, `v2`, Korean `7월1주차`) are
+  stripped **automatically** — no need to list them. (This means an alphanumeric code like
+  `LM12` loses its digits; if a category depends on such a code, use an exact
+  `FileNameContains` rule instead.)
+
 3. Drop a file into `~/Downloads` and watch it move.
 
 4. View the audit log:

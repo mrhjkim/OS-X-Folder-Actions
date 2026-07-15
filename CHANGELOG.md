@@ -19,6 +19,10 @@ All notable changes to this project will be documented in this file.
   classifies by document type/format (weekly report vs design doc), which content
   embedding cannot separate. Measured on real documents before shipping.
 - `SimilarityThreshold` gate; below it, the file falls through to `AiRules`.
+- **`FilenameStopwords`** — substrings (org names, edit-state words) removed from the
+  filename before embedding. Filenames carry organizational noise on nearly every file
+  that dominates the short filename embedding; stripping it took real-file classification
+  from 4/9 to 8/9. Numbers, dates, and week/period counters are stripped automatically.
 - The embedding model cache is pinned to `~/.cache/folder-actions/fastembed` (fastembed's
   default is the system temp dir, which can be reaped mid-run).
 - Dashboard reads, renders, and round-trips `SemanticRules`.
