@@ -4,7 +4,7 @@ import subprocess
 
 
 DEFAULT_TIMEOUT_SECONDS = 120
-_UNVERIFIED_MODELS = {"gemini"}
+_UNVERIFIED_MODELS = {"gemini", "antigravity"}
 _SUPPORTED_TEMPLATE_VARS = {"filepath", "filename", "basename", "folder", "ext"}
 _COMMON_EXECUTABLE_DIRS = [
     "/opt/homebrew/bin",

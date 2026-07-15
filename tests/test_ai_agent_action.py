@@ -60,6 +60,10 @@ class TestBuildAgentCommand:
         with pytest.raises(ValueError, match="not yet verified"):
             AIAgentAction.build_agent_command("gemini", "hello")
 
+    def test_antigravity_is_explicitly_unverified(self):
+        with pytest.raises(ValueError, match="not yet verified"):
+            AIAgentAction.build_agent_command("antigravity", "hello")
+
     def test_unknown_model_raises(self):
         with pytest.raises(ValueError, match="Unknown AI agent model"):
             AIAgentAction.build_agent_command("wat", "hello")
