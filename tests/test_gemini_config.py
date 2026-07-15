@@ -185,7 +185,7 @@ AiRules:
         - MoveToFolder: ~/Invoices/
 """)
         try:
-            rules, ai_rules = parse_yaml_file(path)
+            rules, ai_rules, _sem = parse_yaml_file(path)
             assert ai_rules["provider"] == "gemini"
             assert ai_rules["apiKeyFile"] == "~/.config/folder-actions/gemini.key"
 
@@ -209,7 +209,7 @@ AiRules:
         - MoveToFolder: ~/Finance/
 """)
         try:
-            rules, ai_rules = parse_yaml_file(path)
+            rules, ai_rules, _sem = parse_yaml_file(path)
             out = yaml.safe_load(rules_to_yaml(rules, ai_rules))
             assert "Provider" not in out["AiRules"]
             assert "ApiKeyFile" not in out["AiRules"]
@@ -230,7 +230,7 @@ AiRules:
         - MoveToFolder: ~/Invoices/
 """)
         try:
-            rules, ai_rules = parse_yaml_file(path)
+            rules, ai_rules, _sem = parse_yaml_file(path)
             # Whatever the dashboard round-trips is a path string, not a secret.
             assert ai_rules["apiKeyFile"].endswith(".key")
             assert "AIza" not in rules_to_yaml(rules, ai_rules)

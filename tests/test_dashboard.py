@@ -101,7 +101,7 @@ Rules:
       - MoveToFolder: ~/Documents/PDFs/
 """)
         try:
-            rules, ai_rules = parse_yaml_file(path)
+            rules, ai_rules, _sem = parse_yaml_file(path)
             assert len(rules) == 1
             assert rules[0]["title"] == "PDFs"
             assert rules[0]["dest"] == "~/Documents/PDFs/"
@@ -124,7 +124,7 @@ Rules:
       - MoveToFolder: ~/Documents/PDFs/
 """)
         try:
-            rules, ai_rules = parse_yaml_file(path)
+            rules, ai_rules, _sem = parse_yaml_file(path)
             assert ai_rules is None
             assert rules[0]["actions"][0]["AiAgent"]["Model"] == "claude"
             assert rules[0]["actions"][1] == {"MoveToFolder": "~/Documents/PDFs/"}
@@ -144,7 +144,7 @@ AiRules:
         - MoveToFolder: ~/Finance/
 """)
         try:
-            rules, ai_rules = parse_yaml_file(path)
+            rules, ai_rules, _sem = parse_yaml_file(path)
             assert ai_rules is not None
             assert ai_rules["model"] == "llama3.2"
             assert len(ai_rules["rules"]) == 1
@@ -153,14 +153,14 @@ AiRules:
             os.unlink(path)
 
     def test_missing_file_returns_empty(self):
-        rules, ai_rules = parse_yaml_file("/nonexistent/path/.FolderActions.yaml")
+        rules, ai_rules, _sem = parse_yaml_file("/nonexistent/path/.FolderActions.yaml")
         assert rules == []
         assert ai_rules is None
 
     def test_invalid_yaml_returns_empty(self):
         path = self._write_yaml("{ invalid yaml: [unclosed")
         try:
-            rules, ai_rules = parse_yaml_file(path)
+            rules, ai_rules, _sem = parse_yaml_file(path)
             assert rules == []
         finally:
             os.unlink(path)
@@ -292,7 +292,7 @@ Rules:
         with os.fdopen(fd, "w") as f:
             f.write(original)
         try:
-            rules, ai_rules = parse_yaml_file(path)
+            rules, ai_rules, _sem = parse_yaml_file(path)
             text = rules_to_yaml(rules, ai_rules)
             parsed = yaml.safe_load(text)
             actions = parsed["Rules"][0]["Actions"]

@@ -46,6 +46,13 @@ except ImportError:
     logging.warning("AIProvider not found — AI rules disabled")
 
 try:
+    import SemanticProvider
+    _SEMANTIC_AVAILABLE = True
+except ImportError:
+    _SEMANTIC_AVAILABLE = False
+    logging.warning("SemanticProvider not found — semantic rules disabled")
+
+try:
     import AIAgentAction
     _AI_AGENT_AVAILABLE = True
 except ImportError:
@@ -55,9 +62,12 @@ except ImportError:
 # ------------------------------------------------------------------
 # Known top-level YAML keys (for typo suggestions)
 # ------------------------------------------------------------------
-_KNOWN_YAML_KEYS = ["Rules", "AiRules", "Audit"]
+_KNOWN_YAML_KEYS = ["Rules", "AiRules", "SemanticRules", "Audit"]
 _KNOWN_AIRULES_KEYS = [
     "Provider", "Model", "ApiKeyFile", "ConfidenceThreshold", "TimeoutSeconds", "Rules"
+]
+_KNOWN_SEMANTICRULES_KEYS = [
+    "Model", "SimilarityThreshold", "EmbedSource", "Rules"
 ]
 _NO_MATCH_SENTINEL = "__NO_MATCH__"   # reserved; a rule may not use this Title
 
@@ -140,7 +150,61 @@ def item_added_to_folder(folder, item):
         return
 
     # ------------------------------------------------------------------
-    # Stage 2: AI rules
+    # Stage 2: Semantic rules (free local vector similarity, before the paid LLM)
+    # ------------------------------------------------------------------
+    sem_cfg = config.get("SemanticRules") if config else None
+    if sem_cfg and _SEMANTIC_AVAILABLE and _EXTRACTOR_AVAILABLE:
+        sem_rules = sem_cfg.get("Rules", [])
+        sem_model = sem_cfg.get("Model")
+        sem_threshold = float(sem_cfg.get("SimilarityThreshold", 0.8))
+        sem_source = sem_cfg.get("EmbedSource", "content")
+
+        if sem_rules and sem_model:
+            snippet = ContentExtractor.extract(file_path)
+            result = SemanticProvider.classify(
+                snippet, item, sem_rules, sem_model,
+                threshold=sem_threshold, default_source=sem_source,
+            )
+
+            if not result["error"] and result["matched_rule"] and result["destination"]:
+                dest_dir = result["destination"]
+                entry_id = None
+                if audit:
+                    entry_id = audit.write_intent({
+                        "ts": _utcnow(),
+                        "file": item,
+                        "source": folder,
+                        "event": "added",
+                        "stage": "semantic",
+                        "rule": result["matched_rule"],
+                        "action": "move",
+                        "destination": dest_dir,
+                        "confidence": result["confidence"],
+                        "reason": result["reason"],
+                    })
+
+                move_error = None
+                try:
+                    os.makedirs(dest_dir, exist_ok=True)
+                    dest_path = os.path.join(dest_dir, item)
+                    shutil.move(file_path, dest_path)
+                except OSError as e:
+                    move_error = str(e)
+                    logging.error(f"Semantic Stage move failed: {e}")
+
+                status = "error" if move_error else "success"
+                if audit and entry_id:
+                    audit.update(entry_id, status=status, error=move_error)
+
+                if not move_error:
+                    pct = int(result["confidence"] * 100)
+                    msg = f"{item} → {result['matched_rule']} (semantic: {pct}% similar)"
+                    log(msg, rule_title=result["matched_rule"], stage="semantic")
+                    return
+                # move failed → fall through to the paid LLM stage as a backstop
+
+    # ------------------------------------------------------------------
+    # Stage 3: AI rules (paid LLM fallback)
     # ------------------------------------------------------------------
     ai_cfg = config.get("AiRules") if config else None
     if ai_cfg and _AI_AVAILABLE and _EXTRACTOR_AVAILABLE:
@@ -198,7 +262,7 @@ def item_added_to_folder(folder, item):
                     return
 
     # ------------------------------------------------------------------
-    # Stage 3: Fallthrough
+    # Stage 4: Fallthrough
     # ------------------------------------------------------------------
     log(f"No matching rule for {item} in {folder}")
     if audit:
@@ -300,6 +364,36 @@ def _load_yaml_config(config_path: str):
                         )
                 valid_rules.append(rule)
             ai_cfg["Rules"] = valid_rules
+
+    # Validate SemanticRules
+    sem_cfg = config.get("SemanticRules", {})
+    if sem_cfg:
+        for key in sem_cfg:
+            if key not in _KNOWN_SEMANTICRULES_KEYS:
+                suggestions = difflib.get_close_matches(key, _KNOWN_SEMANTICRULES_KEYS, n=1, cutoff=0.6)
+                hint = f" — did you mean '{suggestions[0]}'?" if suggestions else ""
+                logging.warning(f"Unknown SemanticRules key '{key}'{hint}")
+
+        if not sem_cfg.get("Model"):
+            logging.error("SemanticRules.Model is required — skipping semantic rules section")
+            config.pop("SemanticRules", None)
+        else:
+            # A semantic rule needs both a Title and at least one Utterance. Drop the
+            # rest rather than only warning — a rule with no utterances can never match
+            # and a rule with no Title has no destination.
+            valid_sem = []
+            for rule in sem_cfg.get("Rules", []):
+                title = rule.get("Title")
+                if not title:
+                    logging.error("SemanticRules.Rules entry has no Title — skipping it.")
+                    continue
+                if not rule.get("Utterances"):
+                    logging.error(
+                        f"SemanticRules.Rules['{title}'] has no Utterances — skipping it."
+                    )
+                    continue
+                valid_sem.append(rule)
+            sem_cfg["Rules"] = valid_sem
 
     return config
 

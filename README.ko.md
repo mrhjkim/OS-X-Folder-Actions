@@ -107,6 +107,48 @@ macOS Folder Actions는 환경이 거의 없는 GUI 데몬으로 실행되므로
 > (PDF, docx, xlsx, txt)의 본문 앞 4096자가 구글 API로 전송됩니다. 감시 폴더에는 보통
 > 청구서·계약서·급여명세서가 들어옵니다. 민감한 폴더라면 로컬 Ollama 백엔드를 쓰세요.
 
+### SemanticRules: 무료 로컬 분류 (토큰 없음)
+
+`AiRules`는 파일마다 토큰(또는 Ollama의 CPU)을 씁니다. **`SemanticRules`**는 그 *앞에* 도는
+무료 계층입니다: 로컬 ONNX 모델(`fastembed`, API 키 없음, 첫 다운로드 후 오프라인)로 문서를
+임베딩해서 예시 문구가 가장 가까운 카테고리를 고릅니다. 확신하는 건 **$0**로 이동하고, 정말
+애매한 것만 유료 LLM으로 넘어갑니다.
+
+```yaml
+SemanticRules:
+  Model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # 다국어, fastembed 0.8.0 확인
+  SimilarityThreshold: 0.5           # 미만이면 AiRules로 폴백
+  EmbedSource: content               # content | filename | both
+  Rules:
+    - Title: "청구서"
+      Utterances:                    # 예시 문구 몇 개 = 학습 전체
+        - "세금계산서 공급가액 부가세 청구 금액"
+        - "영수증 결제 내역 카드 승인"
+      Actions:
+        - MoveToFolder: ~/Documents/Invoices
+    - Title: "설계문서"
+      EmbedSource: filename          # 규칙별 override
+      Utterances:
+        - "설계문서 상세 설계 아키텍처"
+      Actions:
+        - MoveToFolder: ~/Documents/Design
+```
+
+파이프라인: `Rules`(파일명, 무료) → `SemanticRules`(벡터, 무료) → `AiRules`(LLM, 유료 폴백).
+
+**`EmbedSource` — 무엇을 임베딩할지** (실제 문서로 측정):
+- `content`(기본값) 는 **내용(주제)**으로 분류 — 내용이 다른 카테고리에 강함(청구서/계약서/이력서).
+- `filename` 은 문서 **종류/형식**으로 분류. 종류가 파일명에 있을 때("주간업무보고", "설계문서").
+  같은 주제·다른 형식이라 내용으로는 안 나뉘는 카테고리에 씁니다.
+- `both` 는 파일명 + 내용 연결 (남용 금지 — 내용이 파일명 신호를 희석할 수 있음).
+
+메모:
+- `Utterances`는 짧은 예시 문구(카테고리당 3~6개), 문서 전체가 아닙니다. 라벨도 학습도 없습니다.
+- 파일명에 정확한 키워드가 항상 들어간다면("주간업무") 일반 `Rules`의 `FileNameContains`가
+  더 정확·무료입니다. `SemanticRules`는 키워드가 변형될 때(유사어/오타) 쓰세요.
+- 첫 분류 시 임베딩 모델(~240MB)이 `~/.cache/folder-actions/fastembed`로 받아집니다. 이후 오프라인.
+- 자세한 샘플: `examples/semantic.FolderActions.yaml`.
+
 3. `~/Downloads`에 파일을 놓으면 자동으로 이동됩니다.
 
 4. 감사 로그 조회:
