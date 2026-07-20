@@ -82,6 +82,37 @@ class TestClassify:
         assert "reason" in SemanticProvider.classify("", "x", [], "m", threshold=0.5)  # error
 
 
+class TestMarginGate:
+    # "애매" → [0.4,0.4,0.4]: equidistant from 청구서 [1,0,0] and 계약서 [0,1,0],
+    # so both rules score ~0.577 and the lead is ~0. That is an out-of-category doc:
+    # argmax still names one, but the near-tie is the tell.
+    def test_near_tie_falls_through_when_margin_set(self):
+        r = SemanticProvider.classify("애매한 문서", "f.txt", RULES, "fake-model",
+                                      threshold=0.5, default_source="content", margin=0.1)
+        assert r["matched_rule"] is None          # lead ~0 < 0.1 → no confident category
+        assert r["error"] is None
+        assert "lead" in r["reason"]
+
+    def test_near_tie_matches_when_margin_disabled(self):
+        # margin=0.0 (default) preserves the old behavior: threshold alone decides.
+        r = SemanticProvider.classify("애매한 문서", "f.txt", RULES, "fake-model",
+                                      threshold=0.5, default_source="content", margin=0.0)
+        assert r["matched_rule"] is not None      # best 0.577 >= 0.5, no margin gate
+
+    def test_clear_winner_survives_margin(self):
+        # "청구 내역" → [1,0,0]: 청구서 1.0, 계약서 0.0. Lead 1.0 >> margin.
+        r = SemanticProvider.classify("청구 내역", "f.txt", RULES, "fake-model",
+                                      threshold=0.5, default_source="content", margin=0.1)
+        assert r["matched_rule"] == "청구서"
+
+    def test_single_rule_has_no_runner_up(self):
+        # One rule → second_score stays -1; lead falls back to best_score, gate uses threshold.
+        one = [RULES[0]]
+        r = SemanticProvider.classify("청구 내역", "f.txt", one, "fake-model",
+                                      threshold=0.5, default_source="content", margin=0.3)
+        assert r["matched_rule"] == "청구서"      # not spuriously blocked by the margin gate
+
+
 class TestEmbedSource:
     def test_filename_source_recovers_signal_content_cannot(self):
         # Content is ambiguous, but the type keyword lives in the filename.

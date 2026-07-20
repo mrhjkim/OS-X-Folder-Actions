@@ -67,7 +67,7 @@ _KNOWN_AIRULES_KEYS = [
     "Provider", "Model", "ApiKeyFile", "ConfidenceThreshold", "TimeoutSeconds", "Rules"
 ]
 _KNOWN_SEMANTICRULES_KEYS = [
-    "Model", "SimilarityThreshold", "EmbedSource", "FilenameStopwords", "Rules"
+    "Model", "SimilarityThreshold", "SimilarityMargin", "EmbedSource", "FilenameStopwords", "Rules"
 ]
 _NO_MATCH_SENTINEL = "__NO_MATCH__"   # reserved; a rule may not use this Title
 
@@ -157,6 +157,7 @@ def item_added_to_folder(folder, item):
         sem_rules = sem_cfg.get("Rules", [])
         sem_model = sem_cfg.get("Model")
         sem_threshold = float(sem_cfg.get("SimilarityThreshold", 0.8))
+        sem_margin = float(sem_cfg.get("SimilarityMargin", 0.0))
         sem_source = sem_cfg.get("EmbedSource", "content")
         sem_stopwords = sem_cfg.get("FilenameStopwords", [])
 
@@ -165,7 +166,7 @@ def item_added_to_folder(folder, item):
             result = SemanticProvider.classify(
                 snippet, item, sem_rules, sem_model,
                 threshold=sem_threshold, default_source=sem_source,
-                filename_stopwords=sem_stopwords,
+                filename_stopwords=sem_stopwords, margin=sem_margin,
             )
 
             if not result["error"] and result["matched_rule"] and result["destination"]:
@@ -388,6 +389,15 @@ def _load_yaml_config(config_path: str):
                     "is not a number — using default 0.8."
                 )
                 del sem_cfg["SimilarityThreshold"]
+        if "SimilarityMargin" in sem_cfg:
+            try:
+                sem_cfg["SimilarityMargin"] = float(sem_cfg["SimilarityMargin"])
+            except (TypeError, ValueError):
+                logging.error(
+                    f"SemanticRules.SimilarityMargin '{sem_cfg['SimilarityMargin']}' "
+                    "is not a number — using default 0.0 (margin gate disabled)."
+                )
+                del sem_cfg["SimilarityMargin"]
         if not isinstance(sem_cfg.get("Rules", []), list):
             logging.error("SemanticRules.Rules must be a list — skipping semantic rules section")
             config.pop("SemanticRules", None)

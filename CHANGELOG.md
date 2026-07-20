@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1.0] - 2026-07-20
+
+### Added
+
+- **`SimilarityMargin` — reject "no category fits" in SemanticRules.** The classifier is
+  argmax over cosine similarity, so it always names the *nearest* rule even for a document
+  that belongs to no configured category — and the tell is that every rule then scores about
+  the same. `SimilarityThreshold` alone can't catch it: a cluster of rules all near 0.68
+  squeaks past a 0.65 gate on a coin-flip winner. `SimilarityMargin` additionally requires
+  the top rule to lead the runner-up by at least this much; a bunched result (small lead)
+  falls through to `AiRules`. Real symptom: `26년 종합 이슈 내역_202607-개발1부.xlsx` scored
+  주간보고 0.696 with all four rules inside 0.66–0.70 (lead 0.002), while every genuine match
+  led by 0.3+. Default `0.0` keeps the old behavior; the gate is opt-in. 6 new tests.
+
 ## [0.3.0.2] - 2026-07-15
 
 ### Added
