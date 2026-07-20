@@ -44,7 +44,7 @@ _VALID_SOURCES = ("content", "filename", "both")
 
 
 def classify(content, filename, rules, model_id, *, threshold, default_source="content",
-             filename_stopwords=None):
+             filename_stopwords=None, margin=0.0):
     """
     Classify a document against SemanticRules by embedding similarity.
 
@@ -53,10 +53,15 @@ def classify(content, filename, rules, model_id, *, threshold, default_source="c
         filename            : the file's basename (used for EmbedSource filename/both)
         rules               : [{"Title", "Utterances", "Actions", "EmbedSource"?}]
         model_id            : a fastembed-supported embedding model id
-        threshold           : minimum cosine to count as a match; below → no match
+        threshold           : minimum cosine for the top rule to count as a match
         default_source      : block-level EmbedSource when a rule doesn't set its own
         filename_stopwords  : substrings removed from the filename before embedding (org
                               names, edit-state words); numbers/dates are stripped anyway
+        margin              : minimum lead the top rule must have over the 2nd-best rule.
+                              Argmax always names a nearest rule even for an out-of-category
+                              document — the tell is that every rule scores about the same.
+                              When (top - second) < margin the win is noise, not confidence,
+                              so return no match and let AiRules decide. 0.0 disables the gate.
 
     Returns a dict with the SAME five keys on every path —
         matched_rule, confidence, reason, destination, error
@@ -73,7 +78,7 @@ def classify(content, filename, rules, model_id, *, threshold, default_source="c
         embedder = _get_model(model_id)
         doc_vecs = {}     # source -> normalized doc vector (embed each source at most once)
 
-        best_title, best_score = None, -1.0
+        best_title, best_score, second_score = None, -1.0, -1.0
         for rule in rules:
             utterances = rule.get("Utterances") or []
             if not utterances:
@@ -91,15 +96,23 @@ def classify(content, filename, rules, model_id, *, threshold, default_source="c
             mat = _utterance_matrix(embedder, model_id, utterances)   # cached, L2-normalized
             score = float(np.max(mat @ doc_vecs[source]))
             if score > best_score:
-                best_title, best_score = rule.get("Title"), score
+                best_title, best_score, second_score = rule.get("Title"), score, best_score
+            elif score > second_score:
+                second_score = score
     except Exception as e:
         return _error(f"semantic classify failed: {e}")
 
     if best_title is None:
         return _error("no rule had usable utterances / document text")
 
+    lead = best_score - second_score if second_score >= 0.0 else best_score
     reason = f"cosine similarity {best_score:.3f}"
-    if best_score < threshold:
+    if margin > 0.0 and second_score >= 0.0:
+        reason += f" (lead {lead:.3f} over 2nd)"
+
+    # Two gates: the top rule must clear the absolute threshold AND lead the runner-up
+    # by `margin`. A cluster of near-equal scores means "no category fits" → fall through.
+    if best_score < threshold or (margin > 0.0 and lead < margin):
         return {"matched_rule": None, "confidence": best_score, "reason": reason,
                 "destination": None, "error": None}
     return {"matched_rule": best_title, "confidence": best_score, "reason": reason,

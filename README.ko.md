@@ -118,6 +118,7 @@ macOS Folder Actions는 환경이 거의 없는 GUI 데몬으로 실행되므로
 SemanticRules:
   Model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # 다국어, fastembed 0.8.0 확인
   SimilarityThreshold: 0.5           # 미만이면 AiRules로 폴백
+  SimilarityMargin: 0.05             # 1등이 2등을 이만큼 못 앞서면 폴백(카테고리 밖 문서 방어). 0이면 끔
   EmbedSource: content               # content | filename | both
   Rules:
     - Title: "청구서"
@@ -141,6 +142,13 @@ SemanticRules:
 - `filename` 은 문서 **종류/형식**으로 분류. 종류가 파일명에 있을 때("주간업무보고", "설계문서").
   같은 주제·다른 형식이라 내용으로는 안 나뉘는 카테고리에 씁니다.
 - `both` 는 파일명 + 내용 연결 (남용 금지 — 내용이 파일명 신호를 희석할 수 있음).
+
+**`SimilarityMargin` — '해당 카테고리 없음' 걸러내기** (선택, 기본값 `0.0` = 끔).
+이 분류기는 **어느 카테고리에도 안 맞는** 문서라도 무조건 가장 가까운 규칙을 고릅니다. 그 신호는
+"모든 규칙이 비슷한 점수로 뭉친다"입니다. `SimilarityThreshold`만으로는 못 잡습니다 — 규칙들이 죄다
+0.68쯤에 몰려 있으면 0.65 게이트를 우연한 1등이 간신히 통과해버립니다. `SimilarityMargin`은 1등이
+2등을 최소 이만큼 **앞서도록** 요구합니다. 점수가 뭉쳐(격차 작음) 있으면 노이즈로 분류하는 대신
+`AiRules`로 폴백합니다. 실측: 카테고리 밖 문서는 격차 0.002, 정상 매칭은 0.3+ 라서 `0.05`가 깔끔히 가릅니다.
 
 메모:
 - `Utterances`는 짧은 예시 문구(카테고리당 3~6개), 문서 전체가 아닙니다. 라벨도 학습도 없습니다.

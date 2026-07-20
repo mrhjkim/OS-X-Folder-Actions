@@ -127,6 +127,33 @@ SemanticRules:
         cfg = _load("SemanticRules:\n  Model: m\n  Rules: notalist\n")
         assert "SemanticRules" not in cfg                     # dropped, no AttributeError
 
+    def test_similaritymargin_is_a_known_key(self, caplog):
+        with caplog.at_level("WARNING"):
+            cfg = _load("""
+SemanticRules:
+  Model: m
+  SimilarityMargin: 0.05
+  Rules:
+    - Title: "청구서"
+      Utterances: ["청구 금액"]
+      Actions: [MoveToFolder: ~/Inv]
+""")
+        assert not any("SimilarityMargin" in m and "Unknown" in m for m in caplog.messages)
+        assert cfg["SemanticRules"]["SimilarityMargin"] == 0.05
+
+    def test_non_numeric_margin_does_not_crash(self):
+        cfg = _load("""
+SemanticRules:
+  Model: m
+  SimilarityMargin: wide
+  Rules:
+    - Title: "청구서"
+      Utterances: ["청구 금액"]
+      Actions: [MoveToFolder: ~/Inv]
+""")
+        assert "SemanticRules" in cfg                            # not crashed
+        assert "SimilarityMargin" not in cfg["SemanticRules"]    # bad value dropped → default 0.0
+
 
 class TestStage2Runtime:
     """Drive item_added_to_folder with a mocked classify — the move/audit/fallthrough block."""

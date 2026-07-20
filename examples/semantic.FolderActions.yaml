@@ -27,6 +27,7 @@ Rules: []
 SemanticRules:
   Model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # 다국어, 대칭형, 프리픽스 불필요
   SimilarityThreshold: 0.5           # 미만이면 AiRules로 폴백. 실제 로그 보고 튜닝하세요.
+  SimilarityMargin: 0.05             # 1등-2등 격차가 이보다 작으면 폴백(카테고리 밖 문서 방어). 0이면 끔.
   EmbedSource: content               # 블록 기본값: content | filename | both
 
   Rules:

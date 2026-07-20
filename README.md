@@ -122,6 +122,7 @@ genuinely ambiguous files fall through to the paid LLM.
 SemanticRules:
   Model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # multilingual, verified in fastembed 0.8.0
   SimilarityThreshold: 0.5           # below → fall through to AiRules
+  SimilarityMargin: 0.05             # top rule must lead the 2nd by this much, else fall through (0 = off)
   EmbedSource: content               # content | filename | both
   Rules:
     - Title: "청구서"
@@ -147,6 +148,15 @@ Pipeline: `Rules` (filename, free) → `SemanticRules` (vector, free) → `AiRul
   ("주간업무보고", "설계문서"). Use it for same-topic/different-format categories that
   content embedding cannot separate.
 - `both` concatenates filename + content (use sparingly — content can dilute the filename signal).
+
+**`SimilarityMargin` — reject "no category fits"** (optional, default `0.0` = off).
+The classifier always picks the *nearest* rule, even for a document that belongs to no
+category — and the tell is that every rule then scores about the same. `SimilarityThreshold`
+alone can't catch this: a cluster of rules all at, say, 0.68 will squeak past a 0.65 gate on
+a coin-flip winner. `SimilarityMargin` requires the top rule to **lead the runner-up** by at
+least this much; if the scores are bunched (small lead) the file falls through to `AiRules`
+instead of being filed on noise. Measured on real files: an out-of-category document led by
+0.002 while every genuine match led by 0.3+, so `0.05` cleanly separates them.
 
 Notes:
 - `Utterances` are short example phrases (3-6 per category), not the whole document. No
