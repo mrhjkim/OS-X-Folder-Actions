@@ -18,7 +18,7 @@ def extract(file_path: str) -> str:
     Supported types:
       .pdf   → pypdf
       .docx  → python-docx
-      .xlsx  → openpyxl (sheet 1 only)
+      .xlsx .xlsm .xltx .xltm → openpyxl (OOXML; sheet 1 only)
       .xls   → xlrd (old binary format; sheet 1 only)
       .txt .md .csv → stdlib open()
     """
@@ -40,7 +40,9 @@ def extract(file_path: str) -> str:
             return _extract_pdf(file_path)
         elif ext == ".docx":
             return _extract_docx(file_path)
-        elif ext == ".xlsx":
+        elif ext in (".xlsx", ".xlsm", ".xltx", ".xltm"):
+            # .xlsm/.xltm are the same OOXML zip as .xlsx plus a macro part;
+            # openpyxl reads them directly (data_only ignores the VBA).
             return _extract_xlsx(file_path)
         elif ext == ".xls":
             return _extract_xls(file_path)

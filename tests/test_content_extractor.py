@@ -100,3 +100,62 @@ def test_xls_extraction_failure_returns_empty(monkeypatch):
     finally:
         os.unlink(path)
     assert out == ""
+
+
+# --- OOXML Excel (.xlsx / .xlsm / .xltx / .xltm) via openpyxl ---
+
+class _FakeWS:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def iter_rows(self, values_only=True):
+        return iter(self._rows)
+
+
+class _FakeWB:
+    def __init__(self, rows):
+        self.active = _FakeWS(rows)
+
+
+def _install_fake_openpyxl(monkeypatch, rows, load_error=None):
+    fake = types.ModuleType("openpyxl")
+
+    def load_workbook(path, read_only=True, data_only=True, **kw):
+        if load_error:
+            raise load_error
+        return _FakeWB(rows)
+
+    fake.load_workbook = load_workbook
+    monkeypatch.setitem(sys.modules, "openpyxl", fake)
+
+
+def _tmp(suffix):
+    f = tempfile.NamedTemporaryFile("wb", suffix=suffix, delete=False)
+    f.write(b"PK\x03\x04")   # zip magic; irrelevant, openpyxl is mocked
+    f.close()
+    return f.name
+
+
+@pytest.mark.parametrize("suffix", [".xlsx", ".xlsm", ".xltx", ".xltm", ".XLSM"])
+def test_ooxml_extensions_dispatch_to_openpyxl(monkeypatch, suffix):
+    _install_fake_openpyxl(monkeypatch, [
+        ("Staging 기능 개발", None, "개발3팀"),
+        ("요구사항", "", "설계"),
+    ])
+    path = _tmp(suffix)
+    try:
+        out = ContentExtractor.extract(path)
+    finally:
+        os.unlink(path)
+    assert "Staging 기능 개발" in out and "설계" in out
+    assert "None" not in out          # None cells skipped
+
+
+def test_xlsm_extraction_failure_returns_empty(monkeypatch):
+    _install_fake_openpyxl(monkeypatch, [], load_error=RuntimeError("bad zip"))
+    path = _tmp(".xlsm")
+    try:
+        out = ContentExtractor.extract(path)   # broad try/except → "" not a crash
+    finally:
+        os.unlink(path)
+    assert out == ""

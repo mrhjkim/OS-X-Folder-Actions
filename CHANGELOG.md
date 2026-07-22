@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1.1] - 2026-07-22
+
+### Fixed
+
+- **`.xlsm` (macro-enabled Excel) content not extracted.** `ContentExtractor` dispatched
+  only `.xlsx` to openpyxl, so `.xlsm`/`.xltx`/`.xltm` fell through to empty text and
+  `AiRules` couldn't classify them. `.xlsm` is the same OOXML zip as `.xlsx` plus a macro
+  part — openpyxl reads it directly, no new dependency. Real symptom:
+  `20260721_SKT_지능망_Staging 기능 개발_개발3팀.xlsm` matched no Stage-1 rule, scored
+  개발계획 0.514 in SemanticRules (below the 0.65 threshold, correct fallthrough), then
+  reached `AiRules` with empty content and stayed unsorted. Now extracts
+  "Staging 구성 기능 개발 …" so `AiRules` files it as 개발계획.
+
 ## [0.3.1.0] - 2026-07-20
 
 ### Added
